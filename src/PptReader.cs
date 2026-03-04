@@ -20,6 +20,8 @@ namespace Nefdev.PptToPptx
         private const ushort RT_Document = 1000;
         private const ushort RT_Slide = 1006;
         private const ushort RT_SlideListWithText = 1008;
+        private const ushort RT_MainMaster = 1016;
+        private const ushort RT_SlideMasterAtom = 1017;
         private const ushort RT_SlidePersistAtom = 1011;
         private const ushort RT_TextCharsAtom = 4000;  // 0x0FA0 — Unicode text
         private const ushort RT_TextBytesAtom = 4008;  // 0x0FA8 — ANSI text
@@ -313,7 +315,7 @@ namespace Nefdev.PptToPptx
                 }
                 else if (header.RecType == RT_SlideListWithText)
                 {
-                    ParseSlideListWithText(data, pos + 8, (int)header.RecLen, presentation, persistMap, slidePersistIds);
+                    ParseSlideListWithText(data, pos + 8, (int)header.RecLen, presentation, persistMap, slidePersistIds, header.RecInstance);
                 }
                 else if (header.RecType == RT_ExObjList)
                 {
@@ -898,7 +900,7 @@ namespace Nefdev.PptToPptx
             }
         }
 
-        private void ParseSlideListWithText(byte[] data, int start, int length, Presentation presentation, Dictionary<int, int> persistMap, List<int> slidePersistIds)
+        private void ParseSlideListWithText(byte[] data, int start, int length, Presentation presentation, Dictionary<int, int> persistMap, List<int> slidePersistIds, int listInstance)
         {
             int end = Math.Min(start + length, data.Length);
             int pos = start;
@@ -924,15 +926,26 @@ namespace Nefdev.PptToPptx
                             int slideId = BitConverter.ToInt32(data, atomStart + 8);
                             slidePersistIds.Add(persistRef);
                             
-                            currentSlide = new Slide { Index = presentation.Slides.Count + 1 };
-                            presentation.Slides.Add(currentSlide);
+                            currentSlide = new Slide();
+                            if (listInstance == 0) // Masters
+                            {
+                                currentSlide.Index = presentation.Masters.Count + 1;
+                                presentation.Masters.Add(currentSlide);
+                                Console.WriteLine($"Adding Master Slide Index={currentSlide.Index}, persistRef={persistRef}");
+                            }
+                            else
+                            {
+                                currentSlide.Index = presentation.Slides.Count + 1;
+                                presentation.Slides.Add(currentSlide);
+                                Console.WriteLine($"Adding Regular Slide Index={currentSlide.Index}, persistRef={persistRef}");
+                            }
                             
                             if (persistMap.TryGetValue(persistRef, out int slideOffset))
                             {
                                 if (slideOffset >= 0 && slideOffset < data.Length - 8)
                                 {
                                     var slideHeader = ReadRecordHeader(data, slideOffset);
-                                    if (slideHeader.RecType == RT_Slide)
+                                    if (slideHeader.RecType == RT_Slide || slideHeader.RecType == RT_MainMaster)
                                     {
                                         ParseSlideContainer(data, slideOffset + 8, (int)slideHeader.RecLen, currentSlide);
                                     }
@@ -1278,7 +1291,7 @@ namespace Nefdev.PptToPptx
                 int recordEnd = pos + 8 + (int)header.RecLen;
                 int atomStart = pos + 8;
                 
-                if (header.RecType == RT_SlideAtom)
+                if (header.RecType == RT_SlideAtom || header.RecType == RT_SlideMasterAtom)
                 {
                     if (header.RecLen >= 12)
                     {

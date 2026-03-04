@@ -3,6 +3,7 @@ namespace Nefdev.PptToPptx
     public class Presentation
     {
         public List<Slide> Slides { get; set; }
+        public List<Slide> Masters { get; set; }
         public VbaProject VbaProject { get; set; }
         public int SlideWidth { get; set; } = 9144000;   // EMU (10 inches)
         public int SlideHeight { get; set; } = 6858000;  // EMU (7.5 inches)
@@ -11,6 +12,7 @@ namespace Nefdev.PptToPptx
         public Presentation()
         {
             Slides = new List<Slide>();
+            Masters = new List<Slide>();
         }
     }
     

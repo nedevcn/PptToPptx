@@ -62,10 +62,10 @@ namespace Nefdev.PptToPptx
                 WritePresentationXml(tempDir, presentation);
                 WritePresentationRelationships(tempDir, presentation);
                 WriteSlidesXml(tempDir, presentation);
-                WriteSlideLayouts(tempDir);
-                WriteSlideLayoutRelationships(tempDir);
-                WriteSlideMasters(tempDir);
-                WriteSlideMasterRelationships(tempDir);
+                WriteSlideLayouts(tempDir, presentation);
+                WriteSlideLayoutRelationships(tempDir, presentation);
+                WriteSlideMasters(tempDir, presentation);
+                WriteSlideMasterRelationships(tempDir, presentation);
                 WriteTheme(tempDir);
                 WriteCoreProperties(tempDir);
                 WriteExtendedProperties(tempDir);
@@ -152,8 +152,12 @@ namespace Nefdev.PptToPptx
             }
             
             // Override — slideLayout, slideMaster, theme
-            WriteOverride(writer, "/ppt/slideLayouts/slideLayout1.xml", "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml");
-            WriteOverride(writer, "/ppt/slideMasters/slideMaster1.xml", "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml");
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                WriteOverride(writer, $"/ppt/slideLayouts/slideLayout{i + 1}.xml", "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml");
+                WriteOverride(writer, $"/ppt/slideMasters/slideMaster{i + 1}.xml", "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml");
+            }
             WriteOverride(writer, "/ppt/theme/theme1.xml", "application/vnd.openxmlformats-officedocument.theme+xml");
             
             // Override — docProps
@@ -231,10 +235,14 @@ namespace Nefdev.PptToPptx
             
             // sldMasterIdLst
             writer.WriteStartElement("p", "sldMasterIdLst", NS_P);
-            writer.WriteStartElement("p", "sldMasterId", NS_P);
-            writer.WriteAttributeString("id", "2147483648");
-            writer.WriteAttributeString("r", "id", NS_R, $"rId{presentation.Slides.Count + 1}");
-            writer.WriteEndElement();
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                writer.WriteStartElement("p", "sldMasterId", NS_P);
+                writer.WriteAttributeString("id", $"{2147483648 + i}");
+                writer.WriteAttributeString("r", "id", NS_R, $"rId{presentation.Slides.Count + i + 1}");
+                writer.WriteEndElement();
+            }
             writer.WriteEndElement();
             
             // sldIdLst
@@ -278,12 +286,16 @@ namespace Nefdev.PptToPptx
                 WriteRelationship(writer, $"rId{i + 1}", REL_SLIDE, $"slides/slide{i + 1}.xml");
             }
             
-            // SlideMaster: rId(N+1)
-            int masterRid = presentation.Slides.Count + 1;
-            WriteRelationship(writer, $"rId{masterRid}", REL_SLIDE_MASTER, "slideMasters/slideMaster1.xml");
+            // SlideMaster: rId(N+1)...rId(N+masterCount)
+            int masterRidBase = presentation.Slides.Count + 1;
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                WriteRelationship(writer, $"rId{masterRidBase + i}", REL_SLIDE_MASTER, $"slideMasters/slideMaster{i + 1}.xml");
+            }
             
-            // Theme: rId(N+2)
-            int themeRid = presentation.Slides.Count + 2;
+            // Theme: rId(N+masterCount+1)
+            int themeRid = presentation.Slides.Count + masterCount + 1;
             WriteRelationship(writer, $"rId{themeRid}", REL_THEME, "theme/theme1.xml");
             
             writer.WriteEndElement();
@@ -1351,95 +1363,171 @@ namespace Nefdev.PptToPptx
         
         #region SlideLayout / SlideMaster / Theme
         
-        private void WriteSlideLayouts(string baseDir)
+        private void WriteSlideLayouts(string baseDir, Presentation presentation)
         {
-            var path = Path.Combine(baseDir, "ppt", "slideLayouts", "slideLayout1.xml");
-            using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
-            
-            writer.WriteStartDocument(true);
-            writer.WriteStartElement("p", "sldLayout", NS_P);
-            writer.WriteAttributeString("xmlns", "a", null, NS_A);
-            writer.WriteAttributeString("xmlns", "r", null, NS_R);
-            writer.WriteAttributeString("type", "blank");
-            writer.WriteAttributeString("preserve", "1");
-            
-            writer.WriteStartElement("p", "cSld", NS_P);
-            writer.WriteStartElement("p", "spTree", NS_P);
-            WriteGroupShapeProperties(writer);
-            writer.WriteEndElement(); // spTree
-            writer.WriteEndElement(); // cSld
-            
-            writer.WriteEndElement(); // sldLayout
-            writer.WriteEndDocument();
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                int layoutNum = i + 1;
+                var path = Path.Combine(baseDir, "ppt", "slideLayouts", $"slideLayout{layoutNum}.xml");
+                using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
+                
+                writer.WriteStartDocument(true);
+                writer.WriteStartElement("p", "sldLayout", NS_P);
+                writer.WriteAttributeString("xmlns", "a", null, NS_A);
+                writer.WriteAttributeString("xmlns", "r", null, NS_R);
+                writer.WriteAttributeString("type", "blank");
+                writer.WriteAttributeString("preserve", "1");
+                
+                writer.WriteStartElement("p", "cSld", NS_P);
+                writer.WriteStartElement("p", "spTree", NS_P);
+                WriteGroupShapeProperties(writer);
+                writer.WriteEndElement(); // spTree
+                writer.WriteEndElement(); // cSld
+                
+                writer.WriteEndElement(); // sldLayout
+                writer.WriteEndDocument();
+            }
         }
         
-        private void WriteSlideLayoutRelationships(string baseDir)
+        private void WriteSlideLayoutRelationships(string baseDir, Presentation presentation)
         {
-            var path = Path.Combine(baseDir, "ppt", "slideLayouts", "_rels", "slideLayout1.xml.rels");
-            using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
-            
-            writer.WriteStartDocument(true);
-            writer.WriteStartElement("Relationships", NS_RELS);
-            WriteRelationship(writer, "rId1", REL_SLIDE_MASTER, "../slideMasters/slideMaster1.xml");
-            writer.WriteEndElement();
-            writer.WriteEndDocument();
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                int layoutNum = i + 1;
+                var path = Path.Combine(baseDir, "ppt", "slideLayouts", "_rels", $"slideLayout{layoutNum}.xml.rels");
+                using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
+                
+                writer.WriteStartDocument(true);
+                writer.WriteStartElement("Relationships", NS_RELS);
+                WriteRelationship(writer, "rId1", REL_SLIDE_MASTER, $"../slideMasters/slideMaster{layoutNum}.xml");
+                writer.WriteEndElement();
+                writer.WriteEndDocument();
+            }
         }
         
-        private void WriteSlideMasters(string baseDir)
+        private void WriteSlideMasters(string baseDir, Presentation presentation)
         {
-            var path = Path.Combine(baseDir, "ppt", "slideMasters", "slideMaster1.xml");
-            using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
-            
-            writer.WriteStartDocument(true);
-            writer.WriteStartElement("p", "sldMaster", NS_P);
-            writer.WriteAttributeString("xmlns", "a", null, NS_A);
-            writer.WriteAttributeString("xmlns", "r", null, NS_R);
-            
-            writer.WriteStartElement("p", "cSld", NS_P);
-            writer.WriteStartElement("p", "spTree", NS_P);
-            WriteGroupShapeProperties(writer);
-            writer.WriteEndElement(); // spTree
-            writer.WriteEndElement(); // cSld
-            
-            // clrMap (required by schema before sldLayoutIdLst)
-            writer.WriteStartElement("p", "clrMap", NS_P);
-            writer.WriteAttributeString("bg1", "lt1");
-            writer.WriteAttributeString("tx1", "dk1");
-            writer.WriteAttributeString("bg2", "lt2");
-            writer.WriteAttributeString("tx2", "dk2");
-            writer.WriteAttributeString("accent1", "accent1");
-            writer.WriteAttributeString("accent2", "accent2");
-            writer.WriteAttributeString("accent3", "accent3");
-            writer.WriteAttributeString("accent4", "accent4");
-            writer.WriteAttributeString("accent5", "accent5");
-            writer.WriteAttributeString("accent6", "accent6");
-            writer.WriteAttributeString("hlink", "hlink");
-            writer.WriteAttributeString("folHlink", "folHlink");
-            writer.WriteEndElement(); // clrMap
-            
-            // sldLayoutIdLst
-            writer.WriteStartElement("p", "sldLayoutIdLst", NS_P);
-            writer.WriteStartElement("p", "sldLayoutId", NS_P);
-            writer.WriteAttributeString("id", "2147483649");
-            writer.WriteAttributeString("r", "id", NS_R, "rId1");
-            writer.WriteEndElement();
-            writer.WriteEndElement();
-            
-            writer.WriteEndElement(); // sldMaster
-            writer.WriteEndDocument();
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                var masterSlide = presentation.Masters.Count > i ? presentation.Masters[i] : new Slide();
+                int masterNum = i + 1;
+                var path = Path.Combine(baseDir, "ppt", "slideMasters", $"slideMaster{masterNum}.xml");
+                using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
+                
+                writer.WriteStartDocument(true);
+                writer.WriteStartElement("p", "sldMaster", NS_P);
+                writer.WriteAttributeString("xmlns", "a", null, NS_A);
+                writer.WriteAttributeString("xmlns", "r", null, NS_R);
+                
+                writer.WriteStartElement("p", "cSld", NS_P);
+                writer.WriteStartElement("p", "spTree", NS_P);
+                WriteGroupShapeProperties(writer);
+                
+                int shapeId = 2;
+                int chartId = 1;
+                int imageRid = 100;
+                
+                foreach (var shape in masterSlide.Shapes)
+                {
+                    if (shape.Type == "Chart" && shape.Chart != null)
+                    {
+                        WriteChartFrame(writer, shape, shapeId, chartId);
+                        WriteChartXml(baseDir, shape.Chart, chartId);
+                        chartId++;
+                    }
+                    else if (shape.Type == "Table" && shape.Table != null)
+                    {
+                        WriteGraphicFrame(writer, shape, shapeId);
+                    }
+                    else if (shape.Type == "Picture" && shape.ImageId != null)
+                    {
+                        if (presentation.Images.Any(img => img.Id == shape.ImageId.Value))
+                        {
+                            WritePictureShape(writer, shape, shapeId, imageRid, 1000 + masterNum, masterSlide.Shapes.IndexOf(shape));
+                            imageRid++;
+                        }
+                    }
+                    else
+                    {
+                        WriteTextBoxShape(writer, shape, shapeId, 1000 + masterNum, masterSlide.Shapes.IndexOf(shape));
+                    }
+                    shapeId++;
+                }
+                
+                writer.WriteEndElement(); // spTree
+                writer.WriteEndElement(); // cSld
+                
+                // clrMap (required by schema before sldLayoutIdLst)
+                writer.WriteStartElement("p", "clrMap", NS_P);
+                writer.WriteAttributeString("bg1", "lt1");
+                writer.WriteAttributeString("tx1", "dk1");
+                writer.WriteAttributeString("bg2", "lt2");
+                writer.WriteAttributeString("tx2", "dk2");
+                writer.WriteAttributeString("accent1", "accent1");
+                writer.WriteAttributeString("accent2", "accent2");
+                writer.WriteAttributeString("accent3", "accent3");
+                writer.WriteAttributeString("accent4", "accent4");
+                writer.WriteAttributeString("accent5", "accent5");
+                writer.WriteAttributeString("accent6", "accent6");
+                writer.WriteAttributeString("hlink", "hlink");
+                writer.WriteAttributeString("folHlink", "folHlink");
+                writer.WriteEndElement(); // clrMap
+                
+                // sldLayoutIdLst
+                writer.WriteStartElement("p", "sldLayoutIdLst", NS_P);
+                writer.WriteStartElement("p", "sldLayoutId", NS_P);
+                writer.WriteAttributeString("id", "2147483649");
+                writer.WriteAttributeString("r", "id", NS_R, "rId1");
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+                
+                writer.WriteEndElement(); // sldMaster
+                writer.WriteEndDocument();
+            }
         }
         
-        private void WriteSlideMasterRelationships(string baseDir)
+        private void WriteSlideMasterRelationships(string baseDir, Presentation presentation)
         {
-            var path = Path.Combine(baseDir, "ppt", "slideMasters", "_rels", "slideMaster1.xml.rels");
-            using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
-            
-            writer.WriteStartDocument(true);
-            writer.WriteStartElement("Relationships", NS_RELS);
-            WriteRelationship(writer, "rId1", REL_SLIDE_LAYOUT, "../slideLayouts/slideLayout1.xml");
-            WriteRelationship(writer, "rId2", REL_THEME, "../theme/theme1.xml");
-            writer.WriteEndElement();
-            writer.WriteEndDocument();
+            int masterCount = Math.Max(1, presentation.Masters.Count);
+            for (int i = 0; i < masterCount; i++)
+            {
+                var masterSlide = presentation.Masters.Count > i ? presentation.Masters[i] : new Slide();
+                int masterNum = i + 1;
+                var path = Path.Combine(baseDir, "ppt", "slideMasters", "_rels", $"slideMaster{masterNum}.xml.rels");
+                using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
+                
+                writer.WriteStartDocument(true);
+                writer.WriteStartElement("Relationships", NS_RELS);
+                WriteRelationship(writer, "rId1", REL_SLIDE_LAYOUT, $"../slideLayouts/slideLayout{masterNum}.xml");
+                WriteRelationship(writer, "rId2", REL_THEME, "../theme/theme1.xml");
+                
+                int chartRid = 3;
+                int imageRid = 100;
+                foreach (var shape in masterSlide.Shapes)
+                {
+                    if (shape.Type == "Chart" && shape.Chart != null)
+                    {
+                        WriteRelationship(writer, $"rId{chartRid}", REL_CHART, $"../charts/chart{chartRid - 1}.xml");
+                        chartRid++;
+                    }
+                    else if (shape.Type == "Picture" && shape.ImageId != null)
+                    {
+                        var imgInfo = presentation.Images.FirstOrDefault(img => img.Id == shape.ImageId.Value);
+                        if (imgInfo != null)
+                        {
+                            string ext = imgInfo.Extension ?? "png";
+                            WriteRelationship(writer, $"rId{imageRid}", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", $"../media/image{shape.ImageId}.{ext}");
+                            imageRid++;
+                        }
+                    }
+                }
+                
+                writer.WriteEndElement();
+                writer.WriteEndDocument();
+            }
         }
         
         private void WriteTheme(string baseDir)
