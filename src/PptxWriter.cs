@@ -759,24 +759,87 @@ namespace Nefdev.PptToPptx
             writer.WriteStartElement("c", "layout", NS_C);
             writer.WriteEndElement();
             
-            if (chart.Type == "Column" || chart.Type == "bar")
+            // Legend
+            if (chart.ShowLegend)
             {
-                writer.WriteStartElement("c", "barChart", NS_C);
+                writer.WriteStartElement("c", "legend", NS_C);
+                writer.WriteStartElement("c", "legendPos", NS_C);
+                writer.WriteAttributeString("val", chart.LegendPosition ?? "r");
+                writer.WriteEndElement();
+                writer.WriteStartElement("c", "overlay", NS_C);
+                writer.WriteAttributeString("val", "0");
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+            }
+            
+            if (!string.IsNullOrEmpty(chart.Title))
+            {
+                writer.WriteStartElement("c", "title", NS_C);
+                writer.WriteStartElement("c", "tx", NS_C);
+                writer.WriteStartElement("c", "rich", NS_C);
+                writer.WriteStartElement("a", "bodyPr", NS_A);
+                writer.WriteEndElement();
+                writer.WriteStartElement("a", "lstStyle", NS_A);
+                writer.WriteEndElement();
+                writer.WriteStartElement("a", "p", NS_A);
+                writer.WriteStartElement("a", "pPr", NS_A);
+                writer.WriteEndElement();
+                writer.WriteStartElement("a", "r", NS_A);
+                writer.WriteStartElement("a", "rPr", NS_A);
+                writer.WriteAttributeString("lang", "en-US");
+                writer.WriteEndElement();
+                writer.WriteStartElement("a", "t", NS_A);
+                writer.WriteString(chart.Title);
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+                writer.WriteStartElement("c", "layout", NS_C);
+                writer.WriteEndElement();
+                writer.WriteStartElement("c", "overlay", NS_C);
+                writer.WriteAttributeString("val", "0");
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+            }
+
+            string chartTag = "barChart";
+            bool isBar = false;
+            bool isLine = false;
+            bool isPie = false;
+            bool isArea = false;
+            bool isScatter = false;
+            bool isRadar = false;
+
+            if (chart.Type == "bar") { chartTag = "barChart"; isBar = true; }
+            else if (chart.Type == "line") { chartTag = "lineChart"; isLine = true; }
+            else if (chart.Type == "pie") { chartTag = "pieChart"; isPie = true; }
+            else if (chart.Type == "area") { chartTag = "areaChart"; isArea = true; }
+            else if (chart.Type == "scatter") { chartTag = "scatterChart"; isScatter = true; }
+            else if (chart.Type == "radar") { chartTag = "radarChart"; isRadar = true; }
+            else { chartTag = "barChart"; isBar = true; } // Fallback
+
+            writer.WriteStartElement("c", chartTag, NS_C);
+
+            if (isBar)
+            {
                 writer.WriteStartElement("c", "barDir", NS_C);
-                writer.WriteAttributeString("val", "col");
+                writer.WriteAttributeString("val", "col"); // Default to column
                 writer.WriteEndElement();
                 writer.WriteStartElement("c", "grouping", NS_C);
                 writer.WriteAttributeString("val", "clustered");
                 writer.WriteEndElement();
             }
-            else // Default fallback to bar chart if unknown
+            else if (isLine)
             {
-                writer.WriteStartElement("c", "barChart", NS_C);
-                writer.WriteStartElement("c", "barDir", NS_C);
-                writer.WriteAttributeString("val", "col");
-                writer.WriteEndElement();
                 writer.WriteStartElement("c", "grouping", NS_C);
-                writer.WriteAttributeString("val", "clustered");
+                writer.WriteAttributeString("val", "standard");
+                writer.WriteEndElement();
+            }
+            else if (isPie)
+            {
+                writer.WriteStartElement("c", "varyColors", NS_C);
+                writer.WriteAttributeString("val", "1");
                 writer.WriteEndElement();
             }
             
@@ -877,7 +940,7 @@ namespace Nefdev.PptToPptx
             writer.WriteAttributeString("val", "2");
             writer.WriteEndElement();
             
-            writer.WriteEndElement(); // barChart (also handles default)
+            writer.WriteEndElement(); // chartTag
                 
                 // Category axis
                 writer.WriteStartElement("c", "catAx", NS_C);
@@ -895,6 +958,29 @@ namespace Nefdev.PptToPptx
                 writer.WriteStartElement("c", "axPos", NS_C);
                 writer.WriteAttributeString("val", "b");
                 writer.WriteEndElement();
+
+                if (!string.IsNullOrEmpty(chart.CategoryAxisTitle))
+                {
+                    writer.WriteStartElement("c", "title", NS_C);
+                    writer.WriteStartElement("c", "tx", NS_C);
+                    writer.WriteStartElement("c", "rich", NS_C);
+                    writer.WriteStartElement("a", "bodyPr", NS_A); writer.WriteEndElement();
+                    writer.WriteStartElement("a", "lstStyle", NS_A); writer.WriteEndElement();
+                    writer.WriteStartElement("a", "p", NS_A);
+                    writer.WriteStartElement("a", "r", NS_A);
+                    writer.WriteStartElement("a", "t", NS_A);
+                    writer.WriteString(chart.CategoryAxisTitle);
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteStartElement("c", "overlay", NS_C);
+                    writer.WriteAttributeString("val", "0");
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                }
+
                 writer.WriteStartElement("c", "crossAx", NS_C);
                 writer.WriteAttributeString("val", "2");
                 writer.WriteEndElement();
@@ -916,6 +1002,29 @@ namespace Nefdev.PptToPptx
                 writer.WriteStartElement("c", "axPos", NS_C);
                 writer.WriteAttributeString("val", "l");
                 writer.WriteEndElement();
+
+                if (!string.IsNullOrEmpty(chart.ValueAxisTitle))
+                {
+                    writer.WriteStartElement("c", "title", NS_C);
+                    writer.WriteStartElement("c", "tx", NS_C);
+                    writer.WriteStartElement("c", "rich", NS_C);
+                    writer.WriteStartElement("a", "bodyPr", NS_A); writer.WriteEndElement();
+                    writer.WriteStartElement("a", "lstStyle", NS_A); writer.WriteEndElement();
+                    writer.WriteStartElement("a", "p", NS_A);
+                    writer.WriteStartElement("a", "r", NS_A);
+                    writer.WriteStartElement("a", "t", NS_A);
+                    writer.WriteString(chart.ValueAxisTitle);
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                    writer.WriteStartElement("c", "overlay", NS_C);
+                    writer.WriteAttributeString("val", "0");
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                }
+
                 writer.WriteEndElement();
                 writer.WriteStartElement("c", "crossAx", NS_C);
                 writer.WriteAttributeString("val", "1");

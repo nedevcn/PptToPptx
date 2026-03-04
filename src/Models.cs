@@ -118,6 +118,10 @@ namespace Nefdev.PptToPptx
     {
         public string Type { get; set; }
         public string Title { get; set; }
+        public string CategoryAxisTitle { get; set; }
+        public string ValueAxisTitle { get; set; }
+        public bool ShowLegend { get; set; } = true;
+        public string LegendPosition { get; set; } = "r"; // r, l, t, b, tr
         public List<ChartSeries> Series { get; set; }
         
         public Chart()

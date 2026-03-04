@@ -24,6 +24,24 @@ namespace Nefdev.PptToPptx
 
         // Common format records
         private const ushort FORMAT = 0x041E;
+
+        // Chart sub-stream records for types and titles
+        private const ushort CH_BAR = 0x1017;
+        private const ushort CH_LINE = 0x1018;
+        private const ushort CH_PIE = 0x1019;
+        private const ushort CH_AREA = 0x101A;
+        private const ushort CH_SCATTER = 0x101B;
+        private const ushort CH_RADAR = 0x101C;
+        private const ushort CH_TEXT = 0x1025;
+        private const ushort CH_BEGIN = 0x1033;
+        private const ushort CH_END = 0x1034;
+        private const ushort CH_DEFAULTTEXT = 0x1024;
+        private const ushort CH_DATATABLE = 0x1032;
+        private const ushort CH_FRAME = 0x1033;
+        private const ushort CH_AXIS = 0x101D;
+        private const ushort CH_TICK = 0x101E;
+        private const ushort CH_VALUERANGE = 0x101F;
+        private const ushort CH_LEGEND = 0x1015;
         
         public Chart ParseChart(byte[] biffData)
         {
@@ -51,6 +69,7 @@ namespace Nefdev.PptToPptx
 
             var records = new List<BiffRecord>();
             BiffRecord lastRecord = null;
+            byte lastTextType = 0; // 1=Title, 2=Category, 3=Value
             
             while (stream.Position < stream.Length)
             {
@@ -125,6 +144,81 @@ namespace Nefdev.PptToPptx
                             
                         case CH_CHARTFORMAT:
                             // Not fully detailed, but can extract type hints or rely on default
+                            break;
+
+                        case CH_BAR:
+                            chart.Type = "bar";
+                            break;
+                        case CH_LINE:
+                            chart.Type = "line";
+                            break;
+                        case CH_PIE:
+                            chart.Type = "pie";
+                            break;
+                        case CH_AREA:
+                            chart.Type = "area";
+                            break;
+                        case CH_SCATTER:
+                            chart.Type = "scatter";
+                            break;
+                        case CH_RADAR:
+                            chart.Type = "radar";
+                            break;
+
+                        case CH_TEXT:
+                            // Text object header. if iType == 1 (Title), iType == 2 (Category), iType == 3 (Value)
+                            if (record.Data.Length > 0)
+                                lastTextType = record.Data[0];
+                            break;
+
+                        case CH_LEGEND:
+                            chart.ShowLegend = true;
+                            if (record.Data.Length >= 18)
+                            {
+                                ushort wCheat = BitConverter.ToUInt16(record.Data, 16);
+                                chart.LegendPosition = wCheat switch {
+                                    0 => "b",
+                                    1 => "tr",
+                                    2 => "t",
+                                    3 => "r",
+                                    4 => "l",
+                                    _ => "r"
+                                };
+                            }
+                            break;
+
+                        case CH_SERIESTEXT:
+                            {
+                                // If this appears without a preceding SERIES record, it's often the chart title
+                                // In MS-GRL, if Text(1025h).iType == 1, then this is the title.
+                                using var recStream = new MemoryStream(record.Data);
+                                using var recReader = new BinaryReader(recStream);
+                                
+                                if (record.Data.Length > 2)
+                                {
+                                    byte cch = record.Data[2];
+                                    if (record.Data.Length > 3)
+                                    {
+                                        byte flags = record.Data[3];
+                                        bool isUni = (flags & 0x01) != 0;
+                                        string text = "";
+                                        if (isUni)
+                                            text = Encoding.Unicode.GetString(record.Data, 4, Math.Min(cch * 2, record.Data.Length - 4));
+                                        else
+                                            text = Encoding.GetEncoding(1252).GetString(record.Data, 4, Math.Min(cch, record.Data.Length - 4));
+                                        
+                                        if (!string.IsNullOrEmpty(text))
+                                        {
+                                            if (lastTextType == 1 || (lastTextType == 0 && string.IsNullOrEmpty(chart.Title)))
+                                                chart.Title = text;
+                                            else if (lastTextType == 2)
+                                                chart.CategoryAxisTitle = text;
+                                            else if (lastTextType == 3)
+                                                chart.ValueAxisTitle = text;
+                                        }
+                                    }
+                                }
+                            }
                             break;
                     }
                 }
