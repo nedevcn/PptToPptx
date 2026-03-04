@@ -877,6 +877,37 @@ namespace Nefdev.PptToPptx
                 writer.WriteEndElement();
                 writer.WriteEndElement();
                 
+                // Series formatting (Color and Markers)
+                if (!string.IsNullOrEmpty(series.Color))
+                {
+                    writer.WriteStartElement("c", "spPr", NS_C);
+                    writer.WriteStartElement("a", "solidFill", NS_A);
+                    writer.WriteStartElement("a", "srgbClr", NS_A);
+                    writer.WriteAttributeString("val", series.Color);
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+
+                    if (isLine || isScatter || isRadar)
+                    {
+                        writer.WriteStartElement("a", "ln", NS_A);
+                        writer.WriteStartElement("a", "solidFill", NS_A);
+                        writer.WriteStartElement("a", "srgbClr", NS_A);
+                        writer.WriteAttributeString("val", series.Color);
+                        writer.WriteEndElement();
+                        writer.WriteEndElement();
+                    }
+                    writer.WriteEndElement(); // spPr
+                }
+
+                if ((isLine || isScatter) && !string.IsNullOrEmpty(series.MarkerType) && series.MarkerType != "none")
+                {
+                    writer.WriteStartElement("c", "marker", NS_C);
+                    writer.WriteStartElement("c", "symbol", NS_C);
+                    writer.WriteAttributeString("val", series.MarkerType);
+                    writer.WriteEndElement();
+                    writer.WriteEndElement();
+                }
+                
                 // Categories
                 if (series.Categories != null && series.Categories.Count > 0)
                 {

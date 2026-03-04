@@ -135,6 +135,8 @@ namespace Nefdev.PptToPptx
         public string Name { get; set; }
         public List<string> Categories { get; set; }
         public List<double> Values { get; set; }
+        public string Color { get; set; } // RRGGBB
+        public string MarkerType { get; set; } // none, circle, square, etc.
         
         public ChartSeries()
         {

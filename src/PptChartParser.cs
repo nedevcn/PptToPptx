@@ -42,6 +42,9 @@ namespace Nefdev.PptToPptx
         private const ushort CH_TICK = 0x101E;
         private const ushort CH_VALUERANGE = 0x101F;
         private const ushort CH_LEGEND = 0x1015;
+        private const ushort CH_AREAFORMAT = 0x100A;
+        private const ushort CH_LINEFORMAT = 0x1007;
+        private const ushort CH_MARKERFORMAT = 0x1022;
         
         public Chart ParseChart(byte[] biffData)
         {
@@ -66,10 +69,13 @@ namespace Nefdev.PptToPptx
             
             var cells = new Dictionary<(int row, int col), string>();
             var numbers = new Dictionary<(int row, int col), double>();
+            var seriesColors = new Dictionary<int, string>();
+            var seriesMarkers = new Dictionary<int, string>();
 
             var records = new List<BiffRecord>();
             BiffRecord lastRecord = null;
             byte lastTextType = 0; // 1=Title, 2=Category, 3=Value
+            int currentSeriesFormattingIndex = -1;
             
             while (stream.Position < stream.Length)
             {
@@ -142,6 +148,56 @@ namespace Nefdev.PptToPptx
                             }
                             break;
                             
+                        case CH_SERIES:
+                            currentSeriesFormattingIndex++;
+                            break;
+
+                        case CH_AREAFORMAT:
+                            // Area format for the current series (bars, areas)
+                            if (record.Data.Length >= 16 && currentSeriesFormattingIndex >= 0)
+                            {
+                                int rgbFore = BitConverter.ToInt32(record.Data, 0);
+                                byte r = (byte)(rgbFore & 0xFF);
+                                byte g = (byte)((rgbFore >> 8) & 0xFF);
+                                byte b = (byte)((rgbFore >> 16) & 0xFF);
+                                seriesColors[currentSeriesFormattingIndex] = $"{r:X2}{g:X2}{b:X2}";
+                            }
+                            break;
+
+                        case CH_LINEFORMAT:
+                            // Line format for lines or borders
+                            if (record.Data.Length >= 12 && currentSeriesFormattingIndex >= 0)
+                            {
+                                // rgb is at offset 0 (4 bytes)
+                                int rgb = BitConverter.ToInt32(record.Data, 0);
+                                byte r = (byte)(rgb & 0xFF);
+                                byte g = (byte)((rgb >> 8) & 0xFF);
+                                byte b = (byte)((rgb >> 16) & 0xFF);
+                                // For line charts, this is the primary color
+                                if (!seriesColors.ContainsKey(currentSeriesFormattingIndex))
+                                    seriesColors[currentSeriesFormattingIndex] = $"{r:X2}{g:X2}{b:X2}";
+                            }
+                            break;
+
+                        case CH_MARKERFORMAT:
+                            if (record.Data.Length >= 20 && currentSeriesFormattingIndex >= 0)
+                            {
+                                ushort markerType = BitConverter.ToUInt16(record.Data, 12);
+                                seriesMarkers[currentSeriesFormattingIndex] = markerType switch {
+                                    1 => "square",
+                                    2 => "diamond",
+                                    3 => "triangle",
+                                    4 => "x",
+                                    5 => "star",
+                                    6 => "dot",
+                                    7 => "dash",
+                                    8 => "circle",
+                                    9 => "plus",
+                                    _ => "none"
+                                };
+                            }
+                            break;
+
                         case CH_CHARTFORMAT:
                             // Not fully detailed, but can extract type hints or rely on default
                             break;
@@ -275,6 +331,13 @@ namespace Nefdev.PptToPptx
                     
                     if (series.Values.Count > 0)
                     {
+                        // Apply formatting (series index starts at 0)
+                        int seriesIdx = c - 1;
+                        if (seriesColors.TryGetValue(seriesIdx, out string color))
+                            series.Color = color;
+                        if (seriesMarkers.TryGetValue(seriesIdx, out string marker))
+                            series.MarkerType = marker;
+
                         chart.Series.Add(series);
                     }
                 }
