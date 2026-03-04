@@ -680,7 +680,7 @@ namespace Nefdev.PptToPptx
             foreach (var row in table.Rows)
             {
                 writer.WriteStartElement("a", "tr", NS_A);
-                writer.WriteAttributeString("h", "370840"); // Default row height
+                writer.WriteAttributeString("h", row.Height.ToString()); 
 
                 foreach (var cell in row.Cells)
                 {
@@ -707,6 +707,11 @@ namespace Nefdev.PptToPptx
                     writer.WriteEndElement(); // txBody
 
                     writer.WriteStartElement("a", "tcPr", NS_A);
+                    writer.WriteAttributeString("marL", cell.MarginLeft.ToString());
+                    writer.WriteAttributeString("marT", cell.MarginTop.ToString());
+                    writer.WriteAttributeString("marR", cell.MarginRight.ToString());
+                    writer.WriteAttributeString("marB", cell.MarginBottom.ToString());
+                    writer.WriteAttributeString("anchor", cell.VerticalAlignment);
                     if (!string.IsNullOrEmpty(cell.FillColor))
                     {
                         writer.WriteStartElement("a", "solidFill", NS_A);

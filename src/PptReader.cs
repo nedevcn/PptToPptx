@@ -1581,15 +1581,18 @@ namespace Nefdev.PptToPptx
             var childShapes = shapes.Where(s => s != groupShape).ToList();
             if (childShapes.Count < 2) return shapes;
 
-            // Group by Top position to find rows
+            // Group by Top position to find rows (with 1/2 point tolerance = 6350 EMUs approx)
+            // Actually, PPT coordinates are often 1/8 points. 1/8 point = 1587.5 EMUs.
+            // Let's use a tolerance of 2000 EMUs.
+            long tolerance = 2000;
+            
             var rows = childShapes
-                .GroupBy(s => s.Top)
+                .GroupBy(s => (long)(Math.Round((double)s.Top / tolerance) * tolerance))
                 .OrderBy(g => g.Key)
                 .ToList();
 
-            // Group by Left position to find columns
             var cols = childShapes
-                .GroupBy(s => s.Left)
+                .GroupBy(s => (long)(Math.Round((double)s.Left / tolerance) * tolerance))
                 .OrderBy(g => g.Key)
                 .ToList();
 
@@ -1604,11 +1607,23 @@ namespace Nefdev.PptToPptx
                 {
                     var row = new TableRow();
                     var sortedCells = rowGroup.OrderBy(s => s.Left).ToList();
+                    
+                    // Row height is the max height of cells in this row
+                    row.Height = sortedCells.Count > 0 ? sortedCells.Max(c => c.Height) : 370840;
+
                     foreach (var cellShape in sortedCells)
                     {
                         var cell = new TableCell();
                         cell.TextContent = cellShape.Paragraphs;
                         cell.FillColor = cellShape.FillColor;
+                        
+                        // Accurate Layout extraction
+                        cell.VerticalAlignment = cellShape.VerticalAlignment;
+                        if (cellShape.MarginLeft.HasValue) cell.MarginLeft = cellShape.MarginLeft.Value;
+                        if (cellShape.MarginTop.HasValue) cell.MarginTop = cellShape.MarginTop.Value;
+                        if (cellShape.MarginRight.HasValue) cell.MarginRight = cellShape.MarginRight.Value;
+                        if (cellShape.MarginBottom.HasValue) cell.MarginBottom = cellShape.MarginBottom.Value;
+                        
                         row.Cells.Add(cell);
                     }
                     table.Rows.Add(row);
@@ -1617,7 +1632,7 @@ namespace Nefdev.PptToPptx
                 // Populate ColumnWidths based on the columns we found
                 foreach (var colGroup in cols)
                 {
-                    var firstCellInCol = colGroup.First();
+                    var firstCellInCol = colGroup.OrderBy(c => c.Top).First();
                     table.ColumnWidths.Add(firstCellInCol.Width);
                 }
 
@@ -1672,6 +1687,32 @@ namespace Nefdev.PptToPptx
                         // Bit 3 (0x08): fLine
                         if ((propValue & 0x08) == 0)
                             shape.LineColor = null;
+                        break;
+                        
+                    // Text layout properties
+                    case 0x0081: // dyTextTop
+                        shape.MarginTop = (long)propValue;
+                        break;
+                    case 0x0082: // dyTextBottom
+                        shape.MarginBottom = (long)propValue;
+                        break;
+                    case 0x0083: // dxTextLeft
+                        shape.MarginLeft = (long)propValue;
+                        break;
+                    case 0x0084: // dxTextRight
+                        shape.MarginRight = (long)propValue;
+                        break;
+                    case 0x0085: // anchorText
+                        switch (propValue)
+                        {
+                            case 0: shape.VerticalAlignment = "t"; break; // Top
+                            case 1: shape.VerticalAlignment = "ctr"; break; // Middle
+                            case 2: shape.VerticalAlignment = "b"; break; // Bottom
+                            case 3: shape.VerticalAlignment = "t"; break; // Top Centered
+                            case 4: shape.VerticalAlignment = "ctr"; break; // Middle Centered
+                            case 5: shape.VerticalAlignment = "b"; break; // Bottom Centered
+                            default: shape.VerticalAlignment = "t"; break;
+                        }
                         break;
                 }
             }

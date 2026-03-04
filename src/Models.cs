@@ -65,6 +65,13 @@ namespace Nefdev.PptToPptx
         
         // 超链接
         public string Hyperlink { get; set; }
+
+        // Layout (used for TextBox/Table cells)
+        public string VerticalAlignment { get; set; } = "t";
+        public long? MarginLeft { get; set; }
+        public long? MarginTop { get; set; }
+        public long? MarginRight { get; set; }
+        public long? MarginBottom { get; set; }
         
         public Shape()
         {
@@ -187,6 +194,7 @@ namespace Nefdev.PptToPptx
     public class TableRow
     {
         public List<TableCell> Cells { get; set; }
+        public long Height { get; set; }
         public TableRow() { Cells = new List<TableCell>(); }
     }
 
@@ -194,6 +202,14 @@ namespace Nefdev.PptToPptx
     {
         public List<TextParagraph> TextContent { get; set; }
         public string FillColor { get; set; }
+        
+        // Layout
+        public string VerticalAlignment { get; set; } = "t"; // t, ctr, b
+        public long MarginLeft { get; set; } = 91440; // Default 0.1 inch
+        public long MarginTop { get; set; } = 45720;  // Default 0.05 inch
+        public long MarginRight { get; set; } = 91440;
+        public long MarginBottom { get; set; } = 45720;
+
         public TableCell() { TextContent = new List<TextParagraph>(); }
     }
     
