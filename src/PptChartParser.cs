@@ -49,35 +49,47 @@ namespace Nefdev.PptToPptx
             var cells = new Dictionary<(int row, int col), string>();
             var numbers = new Dictionary<(int row, int col), double>();
 
+            var records = new List<BiffRecord>();
+            BiffRecord lastRecord = null;
+            
             while (stream.Position < stream.Length)
             {
                 if (stream.Position + 4 > stream.Length) break;
-
-                ushort recordType = reader.ReadUInt16();
-                ushort recordLength = reader.ReadUInt16();
-
-                if (stream.Position + recordLength > stream.Length) break;
                 
-                long nextPos = stream.Position + recordLength;
-                
+                var record = BiffRecord.Read(reader);
+                if (record.Id == 0x003C && lastRecord != null) // CONTINUE
+                {
+                    lastRecord.Continues.Add(record.Data);
+                }
+                else
+                {
+                    records.Add(record);
+                    lastRecord = record;
+                }
+            }
+
+            foreach (var record in records)
+            {
                 try
                 {
-                    switch (recordType)
+                    switch (record.Id)
                     {
                         case FORMAT:
                             // We could parse formats if needed
                             break;
                             
                         case SST:
-                            ParseSstInfo(reader, recordLength, sstStrings, sstOffsets, stream.Position + recordLength);
+                            ParseSstInfo(record, sstStrings, sstOffsets);
                             break;
                             
                         case NUMBER:
                             {
-                                ushort row = reader.ReadUInt16();
-                                ushort col = reader.ReadUInt16();
-                                ushort xf = reader.ReadUInt16();
-                                double val = reader.ReadDouble();
+                                using var recStream = new MemoryStream(record.Data);
+                                using var recReader = new BinaryReader(recStream);
+                                ushort row = recReader.ReadUInt16();
+                                ushort col = recReader.ReadUInt16();
+                                ushort xf = recReader.ReadUInt16();
+                                double val = recReader.ReadDouble();
                                 numbers[(row, col)] = val;
                                 cells[(row, col)] = val.ToString();
                             }
@@ -85,33 +97,25 @@ namespace Nefdev.PptToPptx
                             
                         case LABEL:
                             {
-                                ushort row = reader.ReadUInt16();
-                                ushort col = reader.ReadUInt16();
-                                ushort xf = reader.ReadUInt16();
-                                ushort strLen = reader.ReadUInt16();
-                                if (strLen > 0)
-                                {
-                                    // BIFF8 string format: 1 byte flags (bit 0 = 1 for unicode)
-                                    byte flags = reader.ReadByte();
-                                    bool isUnicode = (flags & 0x01) == 1;
-                                    string text;
-                                    
-                                    if (isUnicode)
-                                        text = Encoding.Unicode.GetString(reader.ReadBytes(strLen * 2));
-                                    else
-                                        text = Encoding.GetEncoding(1252).GetString(reader.ReadBytes(strLen));
-                                        
-                                    cells[(row, col)] = text;
-                                }
+                                var stringReader = new BiffStringReader(record, 6); // Skip row, col, xf
+                                using var recStream = new MemoryStream(record.Data);
+                                using var recReader = new BinaryReader(recStream);
+                                ushort row = recReader.ReadUInt16();
+                                ushort col = recReader.ReadUInt16();
+                                
+                                string text = stringReader.ReadString();
+                                cells[(row, col)] = text;
                             }
                             break;
                             
                         case LABELSST:
                             {
-                                ushort row = reader.ReadUInt16();
-                                ushort col = reader.ReadUInt16();
-                                ushort xf = reader.ReadUInt16();
-                                uint sstIndex = reader.ReadUInt32();
+                                using var recStream = new MemoryStream(record.Data);
+                                using var recReader = new BinaryReader(recStream);
+                                ushort row = recReader.ReadUInt16();
+                                ushort col = recReader.ReadUInt16();
+                                ushort xf = recReader.ReadUInt16();
+                                uint sstIndex = recReader.ReadUInt32();
                                 if (sstIndex < sstStrings.Count)
                                 {
                                     cells[(row, col)] = sstStrings[(int)sstIndex];
@@ -128,8 +132,6 @@ namespace Nefdev.PptToPptx
                 {
                     // Ignore malformed records
                 }
-
-                stream.Position = nextPos;
             }
 
             // After parsing all cells, assemble the Chart
@@ -196,44 +198,24 @@ namespace Nefdev.PptToPptx
             return chart;
         }
 
-        private void ParseSstInfo(BinaryReader reader, ushort length, List<string> strings, List<uint> offsets, long endPosition)
+        private void ParseSstInfo(BiffRecord record, List<string> strings, List<uint> offsets)
         {
-            if (length < 8) return;
+            if (record.Data == null || record.Data.Length < 8) return;
+            
+            using var stream = new MemoryStream(record.Data);
+            using var reader = new BinaryReader(stream);
             
             uint totalStrings = reader.ReadUInt32();
             uint uniqueStrings = reader.ReadUInt32();
             
-            for (int i = 0; i < uniqueStrings && reader.BaseStream.Position < endPosition; i++)
+            var stringReader = new BiffStringReader(record, 8); // SST Header size is 8 bytes
+            
+            for (int i = 0; i < uniqueStrings; i++)
             {
                 try
                 {
-                    ushort charCount = reader.ReadUInt16();
-                    byte flags = reader.ReadByte();
-                    
-                    bool isUnicode = (flags & 0x01) == 1;
-                    bool hasExtString = (flags & 0x04) == 4;
-                    bool hasRichText = (flags & 0x08) == 8;
-                    
-                    ushort runCount = 0;
-                    if (hasRichText) runCount = reader.ReadUInt16();
-                    
-                    uint extLength = 0;
-                    if (hasExtString) extLength = reader.ReadUInt32();
-                    
-                    string text = "";
-                    if (charCount > 0)
-                    {
-                        if (isUnicode)
-                            text = Encoding.Unicode.GetString(reader.ReadBytes(charCount * 2));
-                        else
-                            text = Encoding.GetEncoding(1252).GetString(reader.ReadBytes(charCount));
-                    }
-                    
+                    string text = stringReader.ReadString();
                     strings.Add(text);
-                    
-                    // Skip formatting runs and extended info
-                    if (hasRichText) reader.BaseStream.Position += runCount * 4;
-                    if (hasExtString) reader.BaseStream.Position += extLength;
                 }
                 catch
                 {

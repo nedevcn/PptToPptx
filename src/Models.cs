@@ -75,6 +75,12 @@ namespace Nefdev.PptToPptx
         public List<TextRun> Runs { get; set; }
         public TextAlignment Alignment { get; set; } = TextAlignment.Left;
         
+        // Advanced formatting
+        public int IndentLevel { get; set; } = 0;
+        public bool HasBullet { get; set; }
+        public char? BulletChar { get; set; }
+        public string BulletFont { get; set; }
+        
         public TextParagraph()
         {
             Runs = new List<TextRun>();
