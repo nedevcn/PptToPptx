@@ -11,6 +11,8 @@ namespace Nefdev.PptToPptx
     {
         private static bool _encodingRegistered = false;
         private readonly Stream _stream;
+        private readonly ConversionOptions? _options;
+        private readonly Action<string>? _log;
         private byte[] _picturesData;
         private OleCompoundFile _oleFile;
         
@@ -93,9 +95,11 @@ namespace Nefdev.PptToPptx
         private Dictionary<int, string> _hyperlinkMap = new Dictionary<int, string>();
         private Dictionary<int, string> _notesIdMap = new Dictionary<int, string>(); // slideIdRef -> notes text
 
-        public PptReader(string path)
+        public PptReader(string path, ConversionOptions? options = null)
         {
             _stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            _options = options;
+            _log = options?.Log;
         }
         
         public Presentation ReadPresentation()
@@ -142,7 +146,7 @@ namespace Nefdev.PptToPptx
                         using (picturesStream)
                         {
                             _picturesData = ReadAllBytes(picturesStream);
-                            Console.WriteLine($"Read Pictures stream, size: {_picturesData.Length}");
+                            _log?.Invoke($"Read Pictures stream, size: {_picturesData.Length}");
                         }
                     }
 
@@ -187,7 +191,7 @@ namespace Nefdev.PptToPptx
             AttachEmbeddedResources(presentation);
             DetectFooterPlaceholders(presentation);
 
-            Console.WriteLine($"ReadPresentation complete. Total slides: {presentation.Slides.Count}, Total images: {presentation.Images.Count}");
+            _log?.Invoke($"ReadPresentation complete. Total slides: {presentation.Slides.Count}, Total images: {presentation.Images.Count}");
             return presentation;
         }
 
@@ -411,7 +415,7 @@ namespace Nefdev.PptToPptx
                         {
                             presentation.SlideWidth = (int)(slideW * 914400L / 576);
                             presentation.SlideHeight = (int)(slideH * 914400L / 576);
-                            Console.WriteLine($"Slide size from DocumentAtom: {slideW}x{slideH} master units => {presentation.SlideWidth}x{presentation.SlideHeight} EMU");
+                            _log?.Invoke($"Slide size from DocumentAtom: {slideW}x{slideH} master units => {presentation.SlideWidth}x{presentation.SlideHeight} EMU");
                         }
                     }
                 }
@@ -421,7 +425,7 @@ namespace Nefdev.PptToPptx
                 }
                 else if (header.RecType == ESCHER_DggContainer)
                 {
-                    Console.WriteLine($"Found DggContainer at {pos}, len {header.RecLen}");
+                    _log?.Invoke($"Found DggContainer at {pos}, len {header.RecLen}");
                     ParseDrawingGroup(data, pos + 8, (int)header.RecLen);
                 }
                 else if (header.RecType == RT_SlideListWithText)
@@ -459,7 +463,7 @@ namespace Nefdev.PptToPptx
                     // Since it's global, we just parse it as a proof of concept and 
                     // will rely on the slide/master specific ones.
                     var globalScheme = ParseColorSchemeAtom(data, pos + 8, (int)header.RecLen);
-                    Console.WriteLine("Parsed Environment Global ColorScheme");
+                    _log?.Invoke("Parsed Environment Global ColorScheme");
                 }
                 else if (header.IsContainer)
                 {
@@ -499,7 +503,7 @@ namespace Nefdev.PptToPptx
             
             if (_fontTable.Count > 0)
             {
-                Console.WriteLine($"Parsed {_fontTable.Count} fonts: {string.Join(", ", _fontTable)}");
+                _log?.Invoke($"Parsed {_fontTable.Count} fonts: {string.Join(", ", _fontTable)}");
             }
         }
 
@@ -589,7 +593,7 @@ namespace Nefdev.PptToPptx
             if (exObjId.HasValue && storageName != null)
             {
                 _exOleObjMap[exObjId.Value] = new OleObjectInfo { StorageName = storageName, ProgId = progId };
-                Console.WriteLine($"OLE ExObj mapping: exObjId={exObjId.Value} -> storage='{storageName}' progId='{progId}'");
+                _log?.Invoke($"OLE ExObj mapping: exObjId={exObjId.Value} -> storage='{storageName}' progId='{progId}'");
             }
         }
 
@@ -625,7 +629,7 @@ namespace Nefdev.PptToPptx
             if (hyperlinkId.HasValue && !string.IsNullOrEmpty(url))
             {
                 _hyperlinkMap[hyperlinkId.Value] = url;
-                Console.WriteLine($"Mapped hyperlink {hyperlinkId.Value} -> {url}");
+                _log?.Invoke($"Mapped hyperlink {hyperlinkId.Value} -> {url}");
             }
         }
 
@@ -662,7 +666,7 @@ namespace Nefdev.PptToPptx
                         if (_hyperlinkMap.TryGetValue(hyperlinkId, out string url) && !string.IsNullOrEmpty(url))
                         {
                             shape.Hyperlink = url;
-                            Console.WriteLine($"Associated hyperlink {hyperlinkId} ({url}) with shape");
+                            _log?.Invoke($"Associated hyperlink {hyperlinkId} ({url}) with shape");
                         }
 
                         // Internal jump / action mapping (best-effort)
@@ -755,7 +759,7 @@ namespace Nefdev.PptToPptx
                         if (_hyperlinkMap.TryGetValue(hId, out string url))
                         {
                             run.Hyperlink = url;
-                            Console.WriteLine($"[DEBUG] Assigned hyperlink '{url}' to TextRun: '{run.Text}'");
+                            _log?.Invoke($"Assigned hyperlink '{url}' to TextRun: '{TruncateText(run.Text, 60)}'");
                             break;
                         }
                     }
@@ -814,7 +818,7 @@ namespace Nefdev.PptToPptx
                     // For now just try the first one if we can't map it properly
                     // A better approach would be to parse the OEPlaceholderAtom properly.
                     storageName = storages[0].Name;
-                    Console.WriteLine($"Warning: exObjId {exObjId} not in map, trying fallback storage {storageName}");
+                    _log?.Invoke($"Warning: exObjId {exObjId} not in map, trying fallback storage {storageName}");
                 }
             }
 
@@ -839,13 +843,13 @@ namespace Nefdev.PptToPptx
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Error parsing chart from {storageName}: {ex.Message}");
+                            _log?.Invoke($"Error parsing chart from {storageName}: {ex.Message}");
                         }
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"Warning: No Workbook stream found in OLE storage '{storageName}'. Available streams: {string.Join(", ", _oleFile.GetAllStreamNames())}");
+                    _log?.Invoke($"Warning: No Workbook stream found in OLE storage '{storageName}'. Available entries: {string.Join(", ", _oleFile.GetAllStreamNames())}");
                 }
             }
             
@@ -977,7 +981,7 @@ namespace Nefdev.PptToPptx
                 
                 if (header.RecType == ESCHER_BStoreContainer)
                 {
-                    Console.WriteLine($"Found BStoreContainer at {pos}, len {header.RecLen}");
+                    _log?.Invoke($"Found BStoreContainer at {pos}, len {header.RecLen}");
                     ParseBStore(data, pos + 8, (int)header.RecLen);
                 }
                 else if (header.IsContainer)
@@ -1051,7 +1055,7 @@ namespace Nefdev.PptToPptx
                         picPos++;
                     }
                 }
-                Console.WriteLine($"Pictures stream scan: found {_blipMap.Count} blips");
+            _log?.Invoke($"Pictures stream scan: found {_blipMap.Count} blips");
             }
         }
 
@@ -1198,13 +1202,13 @@ namespace Nefdev.PptToPptx
                             {
                                 currentSlide.Index = presentation.Masters.Count + 1;
                                 presentation.Masters.Add(currentSlide);
-                                Console.WriteLine($"Adding Master Slide Index={currentSlide.Index}, persistRef={persistRef}");
+                                _log?.Invoke($"Adding Master Slide Index={currentSlide.Index}, persistRef={persistRef}");
                             }
                             else
                             {
                                 currentSlide.Index = presentation.Slides.Count + 1;
                                 presentation.Slides.Add(currentSlide);
-                                Console.WriteLine($"Adding Regular Slide Index={currentSlide.Index}, persistRef={persistRef}");
+                                _log?.Invoke($"Adding Regular Slide Index={currentSlide.Index}, persistRef={persistRef}");
                             }
                             
                             if (persistMap.TryGetValue(persistRef, out int slideOffset))
@@ -1619,7 +1623,7 @@ namespace Nefdev.PptToPptx
                             {
                                 shape.Type = "Chart";
                                 shape.Chart = chart;
-                                Console.WriteLine($"Parsed chart from exObjId={exObjId}: {chart.Series.Count} series");
+                                _log?.Invoke($"Parsed chart from exObjId={exObjId}: {chart.Series.Count} series");
                             }
                             else
                             {
@@ -1758,7 +1762,7 @@ namespace Nefdev.PptToPptx
             }
             
             slide.Transition = transition;
-            Console.WriteLine($"Parsed Slide Transition: {transition.Type}, speed={transition.Speed}, autoAdvance={transition.HasAutoAdvance} ({transition.AdvanceTime}ms)");
+            _log?.Invoke($"Parsed Slide Transition: {transition.Type}, speed={transition.Speed}, autoAdvance={transition.HasAutoAdvance} ({transition.AdvanceTime}ms)");
         }
 
         private void ParseAnimationInfo(byte[] data, int start, int length, Shape shape)
@@ -1820,7 +1824,7 @@ namespace Nefdev.PptToPptx
                     };
 
                     shape.Animation = anim;
-                    Console.WriteLine($"Parsed Animation for shape: type={anim.Type}, order={anim.Order}, triggerOnClick={anim.TriggerOnClick}");
+                    _log?.Invoke($"Parsed Animation for shape: type={anim.Type}, order={anim.Order}, triggerOnClick={anim.TriggerOnClick}");
                 }
 
                 pos = recordEnd;
@@ -1863,7 +1867,7 @@ namespace Nefdev.PptToPptx
                             {
                                 // This is a native table indicator
                                 shape.IsNativeTable = true;
-                                Console.WriteLine($"Detected Native Table via {tagName}");
+                                _log?.Invoke($"Detected Native Table via {tagName}");
                             }
                         }
                         subPos += 8 + (int)subHeader.RecLen;

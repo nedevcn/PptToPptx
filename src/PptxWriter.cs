@@ -9,6 +9,8 @@ namespace Nefdev.PptToPptx
     public class PptxWriter : IDisposable
     {
         private readonly string _outputPath;
+        private readonly ConversionOptions? _options;
+        private readonly Action<string>? _log;
         private readonly Dictionary<Shape, int> _chartPartIdMap = new Dictionary<Shape, int>();
         
         // 命名空间常量
@@ -36,9 +38,11 @@ namespace Nefdev.PptToPptx
         private const string REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
         private const string REL_VBA_PROJECT = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
         
-        public PptxWriter(string path)
+        public PptxWriter(string path, ConversionOptions? options = null)
         {
             _outputPath = path;
+            _options = options;
+            _log = options?.Log;
         }
         
         public void WritePresentation(Presentation presentation)
@@ -82,7 +86,7 @@ namespace Nefdev.PptToPptx
                 
                 PackageAsPptx(tempDir, _outputPath);
                 
-                Console.WriteLine($"PPTX file written to: {_outputPath}");
+                _log?.Invoke($"PPTX file written to: {_outputPath}");
             }
             finally
             {
@@ -106,8 +110,8 @@ namespace Nefdev.PptToPptx
 
         private bool ShouldKeepTempFiles()
         {
-            // Opt-in only. Useful for debugging invalid packages.
-            // Set NPPTTOPPTX_KEEP_TEMP=1 to keep a copy under "temp_pptx" next to the output file.
+            if (_options?.KeepTempFiles == true) return true;
+            // Backwards-compatible opt-in via environment variable
             return string.Equals(Environment.GetEnvironmentVariable("NPPTTOPPTX_KEEP_TEMP"), "1", StringComparison.OrdinalIgnoreCase);
         }
 
