@@ -1492,9 +1492,9 @@ namespace Nefdev.PptToPptx
                 {
                     if (pos + 2 <= end)
                     {
-                        // PPT stores font size in points * 100 (hundredths of a point)  
-                        // OOXML uses hundredths of a point as well
-                        run.FontSize = BitConverter.ToUInt16(data, pos) * 100;
+                        // PPT stores font size in hundredths of a point (same as OOXML a:rPr@sz).
+                        // The previous implementation multiplied by 100 again, producing oversized text.
+                        run.FontSize = BitConverter.ToUInt16(data, pos);
                     }
                     pos = Math.Min(pos + 2, end);
                 }
@@ -1782,10 +1782,11 @@ namespace Nefdev.PptToPptx
                     // Flags at offset 4 (after dimColor 4 bytes)
                     // Byte 4: bits for fReverse, fAutomatic, fSound, fStopSound
                     byte flags1 = data[atomStart + 4];
-                    anim.TriggerOnClick = (flags1 & 0x04) == 0; // fAutomatic is bits 2-3 (0x04 or 0x08?)
-                    // MS-PPT spec says fAutomatic is bit 2-3. 0x01 means automatic.
-                    // Actually fAutomatic is 2 bits at bit index 2.
-                    anim.TriggerOnClick = ((flags1 >> 2) & 0x03) == 0;
+
+                    // fAutomatic is a 2-bit field at bit index 2. When it is 0, the effect is click-triggered.
+                    // Non-zero values indicate automatic sequencing (with/after previous).
+                    byte fAutomatic = (byte)((flags1 >> 2) & 0x03);
+                    anim.TriggerOnClick = fAutomatic == 0;
 
                     // orderID is at offset 8 (2 bytes)
                     anim.Order = BitConverter.ToInt16(data, atomStart + 8);
@@ -2287,6 +2288,12 @@ namespace Nefdev.PptToPptx
         {
             int end = Math.Min(start + length, data.Length);
             int pos = start;
+
+            string lastText = null;
+            TextParagraph lastPara = null;
+            List<(int start, int end, int hyperlinkId)> pendingHyperlinks = new List<(int, int, int)>();
+            int? lastTextRangeStart = null;
+            int? lastTextRangeEnd = null;
             
             while (pos + 8 <= end)
             {
@@ -2294,7 +2301,11 @@ namespace Nefdev.PptToPptx
                 int atomStart = pos + 8;
                 int recordEnd = pos + 8 + (int)header.RecLen;
                 
-                if (header.RecType == RT_TextCharsAtom)
+                if (header.RecType == RT_TextHeaderAtom)
+                {
+                    // We don't currently use TextHeaderAtom (text type) but keep it in the scan
+                }
+                else if (header.RecType == RT_TextCharsAtom)
                 {
                     string text = ReadUnicodeString(data, atomStart, (int)header.RecLen);
                     if (!string.IsNullOrEmpty(text))
@@ -2303,6 +2314,9 @@ namespace Nefdev.PptToPptx
                         var paragraph = new TextParagraph();
                         paragraph.Runs.Add(new TextRun { Text = text });
                         shape.Paragraphs.Add(paragraph);
+
+                        lastText = text;
+                        lastPara = paragraph;
                     }
                 }
                 else if (header.RecType == RT_TextBytesAtom)
@@ -2314,11 +2328,56 @@ namespace Nefdev.PptToPptx
                         var paragraph = new TextParagraph();
                         paragraph.Runs.Add(new TextRun { Text = text });
                         shape.Paragraphs.Add(paragraph);
+
+                        lastText = text;
+                        lastPara = paragraph;
                     }
+                }
+                else if (header.RecType == RT_StyleTextPropAtom)
+                {
+                    if (lastPara != null && !string.IsNullOrEmpty(lastText))
+                    {
+                        ParseStyleTextPropAtom(data, atomStart, (int)header.RecLen, lastPara, lastText.Length);
+                        ApplyTextHyperlinks(lastPara, pendingHyperlinks);
+                        pendingHyperlinks.Clear();
+                    }
+                }
+                else if (header.RecType == RT_TextInteractiveInfoAtom)
+                {
+                    if (header.RecLen >= 8)
+                    {
+                        lastTextRangeStart = BitConverter.ToInt32(data, atomStart);
+                        lastTextRangeEnd = BitConverter.ToInt32(data, atomStart + 4);
+                    }
+                }
+                else if (header.RecType == RT_InteractiveInfo)
+                {
+                    if (lastTextRangeStart.HasValue && lastTextRangeEnd.HasValue)
+                    {
+                        int iiId = ParseInteractiveInfoId(data, atomStart, (int)header.RecLen);
+                        if (iiId > 0)
+                        {
+                            pendingHyperlinks.Add((lastTextRangeStart.Value, lastTextRangeEnd.Value, iiId));
+                        }
+                        lastTextRangeStart = null;
+                        lastTextRangeEnd = null;
+                    }
+                }
+                else if (header.IsContainer)
+                {
+                    // Recurse into any nested containers inside ClientTextbox.
+                    // Note: we don't thread state into nested calls; most PPT files keep the text atoms flat.
+                    ParseClientTextbox(data, atomStart, (int)header.RecLen, shape);
                 }
                 
                 pos = recordEnd;
                 if (pos <= start) break;
+            }
+
+            // If the textbox had hyperlink ranges but no StyleTextPropAtom, still apply best-effort to the last paragraph.
+            if (pendingHyperlinks.Count > 0 && lastPara != null)
+            {
+                ApplyTextHyperlinks(lastPara, pendingHyperlinks);
             }
         }
         
