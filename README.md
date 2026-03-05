@@ -113,7 +113,7 @@ PptToPptxConverter.Convert(@"C:\in\legacy.ppt", @"C:\out\converted.pptm");
 
 ## Requirements
 
-*   **.NET SDK:** (e.g., .NET 6, .NET 7, .NET 8, or .NET Standard depending on project target)
+*   **.NET SDK:** .NET 8 (current project target)
 *   **No external Office installation required.**
 
 ## Known Limitations / Roadmap

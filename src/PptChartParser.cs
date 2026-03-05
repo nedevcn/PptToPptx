@@ -55,6 +55,13 @@ namespace Nefdev.PptToPptx
         
         public Chart ParseChart(byte[] biffData)
         {
+            return ParseChart(biffData, null);
+        }
+
+        public Chart ParseChart(byte[] biffData, ConversionOptions? options)
+        {
+            EncodingRegistration.EnsureCodePages();
+
             var chart = new Chart();
             chart.Type = "bar"; // Default
 
@@ -64,8 +71,17 @@ namespace Nefdev.PptToPptx
             var sstStrings = new List<string>();
             var sstOffsets = new List<uint>();
 
-            int ansiCodePage = 1252; // default
-            Encoding ansiEncoding = Encoding.GetEncoding(1252);
+            int ansiCodePage = options?.BiffAnsiCodePageOverride ?? 1252; // default
+            Encoding ansiEncoding;
+            try
+            {
+                ansiEncoding = Encoding.GetEncoding(ansiCodePage);
+            }
+            catch
+            {
+                ansiCodePage = 1252;
+                ansiEncoding = Encoding.GetEncoding(1252);
+            }
 
             ChartSeries currentSeries = null;
             
@@ -112,15 +128,19 @@ namespace Nefdev.PptToPptx
                         case CODEPAGE:
                             if (record.Data.Length >= 2)
                             {
-                                ansiCodePage = BitConverter.ToUInt16(record.Data, 0);
-                                try
+                                // Only respect CODEPAGE when the caller didn't force a specific code page.
+                                if (options?.BiffAnsiCodePageOverride == null)
                                 {
-                                    ansiEncoding = Encoding.GetEncoding(ansiCodePage);
-                                }
-                                catch
-                                {
-                                    ansiCodePage = 1252;
-                                    ansiEncoding = Encoding.GetEncoding(1252);
+                                    ansiCodePage = BitConverter.ToUInt16(record.Data, 0);
+                                    try
+                                    {
+                                        ansiEncoding = Encoding.GetEncoding(ansiCodePage);
+                                    }
+                                    catch
+                                    {
+                                        ansiCodePage = 1252;
+                                        ansiEncoding = Encoding.GetEncoding(1252);
+                                    }
                                 }
                             }
                             break;

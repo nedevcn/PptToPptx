@@ -16,6 +16,8 @@ namespace Nefdev.PptToPptx
         
         public BiffStringReader(BiffRecord record, int startOffset, int ansiCodePage = 1252)
         {
+            EncodingRegistration.EnsureCodePages();
+
             _record = record;
             _chunkIndex = 0;
             _chunkOffset = startOffset;

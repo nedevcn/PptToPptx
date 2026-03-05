@@ -4,7 +4,7 @@ namespace Nefdev.PptToPptx
     {
         public List<Slide> Slides { get; set; }
         public List<Slide> Masters { get; set; }
-        public VbaProject VbaProject { get; set; }
+        public VbaProject? VbaProject { get; set; }
         public int SlideWidth { get; set; } = 9144000;   // EMU (10 inches)
         public int SlideHeight { get; set; } = 6858000;  // EMU (7.5 inches)
         public List<ImageResource> Images { get; set; } = new List<ImageResource>();
@@ -23,9 +23,9 @@ namespace Nefdev.PptToPptx
         public int SlideId { get; set; }
         public List<Shape> Shapes { get; set; }
         public List<TextParagraph> TextContent { get; set; }
-        public string Notes { get; set; }
-        public SlideTransition Transition { get; set; }
-        public ColorScheme ColorScheme { get; set; }
+        public string? Notes { get; set; }
+        public SlideTransition? Transition { get; set; }
+        public ColorScheme? ColorScheme { get; set; }
         
         public Slide()
         {
@@ -36,20 +36,20 @@ namespace Nefdev.PptToPptx
     
     public class Shape
     {
-        public string Type { get; set; }  // "TextBox", "Rectangle", "Picture", "Chart", "Group", "Placeholder"
-        public string Text { get; set; }
-        public Chart Chart { get; set; }
+        public string Type { get; set; } = "Rectangle";  // "TextBox", "Rectangle", "Picture", "Chart", "Group", "Placeholder"
+        public string? Text { get; set; }
+        public Chart? Chart { get; set; }
 
         // Placeholder / layout semantics (best-effort)
         // Common values: "title", "body", "dt", "ftr", "sldNum"
-        public string PlaceholderType { get; set; }
+        public string? PlaceholderType { get; set; }
         public int? PlaceholderIndex { get; set; }
 
         public int? EmbeddedResourceId { get; set; }
 
         // Click actions (internal navigation etc.)
         // Examples: "ppaction://hlinkshowjump?jump=nextslide"
-        public string ClickAction { get; set; }
+        public string? ClickAction { get; set; }
         
         // 位置和大小 (EMU)
         public long Left { get; set; }
@@ -61,34 +61,34 @@ namespace Nefdev.PptToPptx
         public List<TextParagraph> Paragraphs { get; set; }
         
         // Table content
-        public Table Table { get; set; }
+        public Table? Table { get; set; }
         public bool IsNativeTable { get; set; }
 
         // 图片引用
         public int? ImageId { get; set; }
-        public byte[] ImageData { get; set; }
-        public string ImageContentType { get; set; }
+        public byte[]? ImageData { get; set; }
+        public string? ImageContentType { get; set; }
         
         // 填充颜色 (RRGGBB 格式)
-        public string FillColor { get; set; }
+        public string? FillColor { get; set; }
         
         // 线条颜色
-        public string LineColor { get; set; }
+        public string? LineColor { get; set; }
 
         // Line style
         public long? LineWidth { get; set; } // in OOXML EMU
-        public string LineDash { get; set; } // "solid","dash","dot","dashDot","lgDash"...
+        public string? LineDash { get; set; } // "solid","dash","dot","dashDot","lgDash"...
 
         // Fill style
         public bool HasGradientFill { get; set; }
-        public string FillBackColor { get; set; }
+        public string? FillBackColor { get; set; }
 
         // Shadow (very simplified)
         public bool HasShadow { get; set; }
-        public string ShadowColor { get; set; }
+        public string? ShadowColor { get; set; }
         
         // 超链接
-        public string Hyperlink { get; set; }
+        public string? Hyperlink { get; set; }
 
         // Layout (used for TextBox/Table cells)
         public string VerticalAlignment { get; set; } = "t";
@@ -98,10 +98,10 @@ namespace Nefdev.PptToPptx
         public long? MarginBottom { get; set; }
         
         // Geometry
-        public ShapeGeometry Geometry { get; set; }
+        public ShapeGeometry? Geometry { get; set; }
         
         // Animation
-        public ShapeAnimation Animation { get; set; }
+        public ShapeAnimation? Animation { get; set; }
         
         public Shape()
         {
@@ -112,9 +112,9 @@ namespace Nefdev.PptToPptx
     public class ImageResource
     {
         public int Id { get; set; }
-        public byte[] Data { get; set; }
-        public string Extension { get; set; }
-        public string ContentType { get; set; }
+        public byte[] Data { get; set; } = Array.Empty<byte>();
+        public string? Extension { get; set; }
+        public string? ContentType { get; set; }
     }
     
     public class TextParagraph
@@ -147,27 +147,27 @@ namespace Nefdev.PptToPptx
     public class TextRun
     {
         public string Text { get; set; } = "";
-        public string FontName { get; set; }
+        public string? FontName { get; set; }
         public int FontSize { get; set; } = 1800; // hundredths of a point (18pt default)
         public bool Bold { get; set; }
         public bool Italic { get; set; }
         public bool Underline { get; set; }
-        public string Color { get; set; }  // RRGGBB
+        public string? Color { get; set; }  // RRGGBB
         
         // 超链接
-        public string Hyperlink { get; set; }
-        public string ClickAction { get; set; }
+        public string? Hyperlink { get; set; }
+        public string? ClickAction { get; set; }
     }
 
     public class EmbeddedResource
     {
         public int Id { get; set; }
-        public string Kind { get; set; } // "ole", "media", "unknown"
-        public string ProgId { get; set; }
-        public string FileName { get; set; }
-        public string Extension { get; set; }
-        public string ContentType { get; set; }
-        public byte[] Data { get; set; }
+        public string Kind { get; set; } = "ole"; // "ole", "media", "unknown"
+        public string? ProgId { get; set; }
+        public string? FileName { get; set; }
+        public string? Extension { get; set; }
+        public string? ContentType { get; set; }
+        public byte[] Data { get; set; } = Array.Empty<byte>();
     }
     
     public enum TextAlignment
@@ -180,10 +180,10 @@ namespace Nefdev.PptToPptx
     
     public class Chart
     {
-        public string Type { get; set; }
-        public string Title { get; set; }
-        public string CategoryAxisTitle { get; set; }
-        public string ValueAxisTitle { get; set; }
+        public string Type { get; set; } = "bar";
+        public string? Title { get; set; }
+        public string? CategoryAxisTitle { get; set; }
+        public string? ValueAxisTitle { get; set; }
         public bool ShowLegend { get; set; } = true;
         public string LegendPosition { get; set; } = "r"; // r, l, t, b, tr
         public List<ChartSeries> Series { get; set; }
@@ -196,11 +196,11 @@ namespace Nefdev.PptToPptx
     
     public class ChartSeries
     {
-        public string Name { get; set; }
+        public string? Name { get; set; }
         public List<string> Categories { get; set; }
         public List<double> Values { get; set; }
-        public string Color { get; set; } // RRGGBB
-        public string MarkerType { get; set; } // none, circle, square, etc.
+        public string? Color { get; set; } // RRGGBB
+        public string? MarkerType { get; set; } // none, circle, square, etc.
         
         public ChartSeries()
         {
@@ -211,8 +211,8 @@ namespace Nefdev.PptToPptx
     
     public class VbaProject
     {
-        public string Name { get; set; }
-        public byte[] ProjectData { get; set; }
+        public string? Name { get; set; }
+        public byte[] ProjectData { get; set; } = Array.Empty<byte>();
         public List<VbaModule> Modules { get; set; }
         
         public VbaProject()
@@ -223,8 +223,8 @@ namespace Nefdev.PptToPptx
     
     public class VbaModule
     {
-        public string Name { get; set; }
-        public string Code { get; set; }
+        public string? Name { get; set; }
+        public string? Code { get; set; }
     }
 
     public class Table
@@ -248,7 +248,7 @@ namespace Nefdev.PptToPptx
     public class TableCell
     {
         public List<TextParagraph> TextContent { get; set; }
-        public string FillColor { get; set; }
+        public string? FillColor { get; set; }
         
         // Layout
         public string VerticalAlignment { get; set; } = "t"; // t, ctr, b

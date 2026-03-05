@@ -40,6 +40,9 @@ namespace Nefdev.PptToPptx
         
         public PptxWriter(string path, ConversionOptions? options = null)
         {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Output .pptx/.pptm path must be provided.", nameof(path));
+
             _outputPath = path;
             _options = options;
             _log = options?.Log;
@@ -47,6 +50,10 @@ namespace Nefdev.PptToPptx
         
         public void WritePresentation(Presentation presentation)
         {
+            if (presentation == null) throw new ArgumentNullException(nameof(presentation));
+            if (presentation.SlideWidth <= 0) presentation.SlideWidth = 9144000;
+            if (presentation.SlideHeight <= 0) presentation.SlideHeight = 6858000;
+
             var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
             Directory.CreateDirectory(tempDir);
             
@@ -79,7 +86,7 @@ namespace Nefdev.PptToPptx
                 WriteCoreProperties(tempDir);
                 WriteExtendedProperties(tempDir);
                 
-                if (presentation.VbaProject != null)
+                if (presentation.VbaProject?.ProjectData != null && presentation.VbaProject.ProjectData.Length > 0)
                 {
                     WriteVbaProject(tempDir, presentation.VbaProject);
                 }
@@ -92,19 +99,30 @@ namespace Nefdev.PptToPptx
             {
                 if (ShouldKeepTempFiles())
                 {
-                    string copyDir = Path.Combine(Path.GetDirectoryName(_outputPath), "temp_pptx");
+                    string outDir = Path.GetDirectoryName(_outputPath);
+                    if (string.IsNullOrEmpty(outDir))
+                        outDir = Directory.GetCurrentDirectory();
+
+                    string copyDir = Path.Combine(outDir, "temp_pptx");
                     Directory.CreateDirectory(copyDir);
 
                     foreach (var file in Directory.GetFiles(tempDir, "*.*", SearchOption.AllDirectories))
                     {
                         string relativePath = Path.GetRelativePath(tempDir, file);
                         string destPath = Path.Combine(copyDir, relativePath);
-                        Directory.CreateDirectory(Path.GetDirectoryName(destPath));
+                        Directory.CreateDirectory(Path.GetDirectoryName(destPath) ?? copyDir);
                         File.Copy(file, destPath, overwrite: true);
                     }
                 }
 
-                Directory.Delete(tempDir, recursive: true);
+                try
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    _log?.Invoke($"Warning: failed to delete temp dir '{tempDir}': {ex.Message}");
+                }
             }
         }
 
@@ -168,9 +186,11 @@ namespace Nefdev.PptToPptx
         
         private void WriteContentTypes(string baseDir, Presentation presentation)
         {
-            bool hasVba = presentation?.VbaProject?.ProjectData != null;
+            bool hasVba = presentation?.VbaProject?.ProjectData != null && presentation.VbaProject.ProjectData.Length > 0;
             string extension = Path.GetExtension(_outputPath);
-            bool isMacroEnabledPackage = hasVba && string.Equals(extension, ".pptm", StringComparison.OrdinalIgnoreCase);
+            bool isMacroEnabledPackage = hasVba;
+            if (hasVba && !string.Equals(extension, ".pptm", StringComparison.OrdinalIgnoreCase))
+                _log?.Invoke($"Warning: source contains VBA, but output extension is '{extension}'. Consider using .pptm.");
             bool hasEmbeddings = presentation?.EmbeddedResources != null && presentation.EmbeddedResources.Count > 0;
 
             var path = Path.Combine(baseDir, "[Content_Types].xml");
@@ -358,7 +378,7 @@ namespace Nefdev.PptToPptx
             var path = Path.Combine(baseDir, "ppt", "_rels", "presentation.xml.rels");
             using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
             
-            bool hasVba = presentation?.VbaProject?.ProjectData != null;
+            bool hasVba = presentation?.VbaProject?.ProjectData != null && presentation.VbaProject.ProjectData.Length > 0;
             
             writer.WriteStartDocument(true);
             writer.WriteStartElement("Relationships", NS_RELS);
@@ -2436,7 +2456,7 @@ namespace Nefdev.PptToPptx
             }
         }
         
-        private void WriteRelationship(XmlWriter writer, string id, string type, string target, string targetMode = null)
+        private void WriteRelationship(XmlWriter writer, string id, string type, string target, string? targetMode = null)
         {
             writer.WriteStartElement("Relationship", NS_RELS);
             writer.WriteAttributeString("Id", id);

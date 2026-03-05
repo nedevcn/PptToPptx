@@ -9,12 +9,11 @@ namespace Nefdev.PptToPptx
 {
     public class PptReader : IDisposable
     {
-        private static bool _encodingRegistered = false;
         private readonly Stream _stream;
         private readonly ConversionOptions? _options;
         private readonly Action<string>? _log;
-        private byte[] _picturesData;
-        private OleCompoundFile _oleFile;
+        private byte[]? _picturesData;
+        private OleCompoundFile? _oleFile;
         
         private struct OleObjectInfo
         {
@@ -97,6 +96,11 @@ namespace Nefdev.PptToPptx
 
         public PptReader(string path, ConversionOptions? options = null)
         {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Input .ppt path must be provided.", nameof(path));
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Input .ppt file not found.", path);
+
             _stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             _options = options;
             _log = options?.Log;
@@ -104,26 +108,30 @@ namespace Nefdev.PptToPptx
         
         public Presentation ReadPresentation()
         {
-            if (!_encodingRegistered)
-            {
-                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-                _encodingRegistered = true;
-            }
+            EncodingRegistration.EnsureCodePages();
+
+            _picturesData = null;
+            _blipMap.Clear();
+            _fontTable.Clear();
+            _hyperlinkMap.Clear();
+            _notesIdMap.Clear();
+            _exOleObjMap.Clear();
             
             var presentation = new Presentation();
             
             // 使用 OLE Compound File 解析器
-            _oleFile = new OleCompoundFile(_stream);
-            var oleFile = _oleFile;
+            var oleFile = new OleCompoundFile(_stream);
+            _oleFile = oleFile;
             oleFile.Parse();
             
             // 读取 PowerPoint 文档流
             var pptStream = oleFile.GetStream("PowerPoint Document");
-            if (pptStream != null)
+            if (pptStream == null)
+                throw new InvalidDataException("OLE container does not contain a 'PowerPoint Document' stream.");
+
+            using (pptStream)
             {
-                using (pptStream)
-                {
-                    byte[] pptData = ReadAllBytes(pptStream);
+                byte[] pptData = ReadAllBytes(pptStream);
                     
                     // 先尝试通过 Current User 找到 UserEdit 链
                     int userEditOffset = -1;
@@ -167,7 +175,6 @@ namespace Nefdev.PptToPptx
 
                     // 将 blipMap 中的图片添加到 Presentation
                     presentation.Images.AddRange(_blipMap.Values);
-                }
             }
             
             // 如果没有解析到任何幻灯片，尝试直接扫描
@@ -229,7 +236,7 @@ namespace Nefdev.PptToPptx
             }
         }
 
-        private string GuessExtFromContentType(string contentType)
+        private string GuessExtFromContentType(string? contentType)
         {
             if (string.IsNullOrEmpty(contentType)) return "bin";
             return contentType switch
@@ -552,7 +559,7 @@ namespace Nefdev.PptToPptx
             int pos = start;
             
             int? exObjId = null;
-            string storageName = null;
+            string? storageName = null;
             string progId = null;
             
             while (pos + 8 <= end)
@@ -799,9 +806,10 @@ namespace Nefdev.PptToPptx
             return 0;
         }
 
-        private Chart TryParseChartFromExObjId(int exObjId)
+        private Chart? TryParseChartFromExObjId(int exObjId)
         {
-            if (_oleFile == null) return null;
+            var ole = _oleFile;
+            if (ole == null) return null;
 
             string storageName = null;
             if (_exOleObjMap.TryGetValue(exObjId, out OleObjectInfo info))
@@ -812,7 +820,7 @@ namespace Nefdev.PptToPptx
             {
                 // Fallback: there might not be a mapping, but maybe there's only one storage
                 // Or maybe the storage name is just $"_{exObjId}" 
-                var storages = _oleFile.GetStoragesByPrefix("_");
+                var storages = ole.GetStoragesByPrefix("_");
                 if (storages.Count > 0)
                 {
                     // For now just try the first one if we can't map it properly
@@ -825,11 +833,11 @@ namespace Nefdev.PptToPptx
             if (storageName != null)
             {
                 // Most MS Graph/Excel charts store data in a "Workbook" stream inside the OLE storage
-                var stream = _oleFile.GetChildStream(storageName, "Workbook");
+                var stream = ole.GetChildStream(storageName, "Workbook");
                 
                 // Sometimes it's called "Graph Data" or just "Book" or "\x01CompObj"
                 if (stream == null)
-                    stream = _oleFile.GetChildStream(storageName, "Book");
+                    stream = ole.GetChildStream(storageName, "Book");
                     
                 if (stream != null)
                 {
@@ -839,7 +847,7 @@ namespace Nefdev.PptToPptx
                         var parser = new PptChartParser();
                         try
                         {
-                            return parser.ParseChart(biffData);
+                            return parser.ParseChart(biffData, _options);
                         }
                         catch (Exception ex)
                         {
@@ -849,23 +857,24 @@ namespace Nefdev.PptToPptx
                 }
                 else
                 {
-                    _log?.Invoke($"Warning: No Workbook stream found in OLE storage '{storageName}'. Available entries: {string.Join(", ", _oleFile.GetAllStreamNames())}");
+                    _log?.Invoke($"Warning: No Workbook stream found in OLE storage '{storageName}'. Available entries: {string.Join(", ", ole.GetAllStreamNames())}");
                 }
             }
             
             return null;
         }
 
-        private EmbeddedResource TryExtractEmbeddedResourceFromExObjId(int exObjId)
+        private EmbeddedResource? TryExtractEmbeddedResourceFromExObjId(int exObjId)
         {
-            if (_oleFile == null) return null;
+            var ole = _oleFile;
+            if (ole == null) return null;
 
             if (!_exOleObjMap.TryGetValue(exObjId, out OleObjectInfo info) || string.IsNullOrEmpty(info.StorageName))
                 return null;
 
             // Prefer common payload stream names for embedded packages/media
             string[] candidateNames = new[] { "CONTENTS", "Contents", "\u0001Ole10Native", "Package", "Data", "Media", "CONTENTS1" };
-            OleCompoundFile.DirectoryEntry bestEntry = null;
+            OleCompoundFile.DirectoryEntry? bestEntry = null;
             foreach (var name in candidateNames)
             {
                 var entry = GetChildStreamEntry(info.StorageName, name);
@@ -891,10 +900,10 @@ namespace Nefdev.PptToPptx
 
             if (bestEntry == null) return null;
 
-            using var stream = _oleFile.GetStream(bestEntry);
+            using var stream = ole.GetStream(bestEntry);
             if (stream == null) return null;
             byte[] payload = ReadAllBytes(stream);
-            if (payload == null || payload.Length == 0) return null;
+            if (payload.Length == 0) return null;
 
             var res = new EmbeddedResource();
             res.Kind = GuessKindFromProgId(info.ProgId);
@@ -907,7 +916,7 @@ namespace Nefdev.PptToPptx
             return res;
         }
 
-        private string GuessKindFromProgId(string progId)
+        private string GuessKindFromProgId(string? progId)
         {
             if (string.IsNullOrEmpty(progId)) return "unknown";
             string p = progId.ToLowerInvariant();
@@ -960,7 +969,7 @@ namespace Nefdev.PptToPptx
             return _oleFile.GetChildEntries(storageName);
         }
 
-        private OleCompoundFile.DirectoryEntry GetChildStreamEntry(string storageName, string streamName)
+        private OleCompoundFile.DirectoryEntry? GetChildStreamEntry(string storageName, string streamName)
         {
             foreach (var e in GetChildStreamEntries(storageName))
             {
@@ -1533,7 +1542,7 @@ namespace Nefdev.PptToPptx
             }
         }
 
-        private Shape ParseSpContainer(byte[] data, int start, int length)
+        private Shape? ParseSpContainer(byte[] data, int start, int length)
         {
             int end = Math.Min(start + length, data.Length);
             int pos = start;
@@ -1879,7 +1888,7 @@ namespace Nefdev.PptToPptx
             }
         }
 
-        private ColorScheme ParseColorSchemeAtom(byte[] data, int start, int length)
+        private ColorScheme? ParseColorSchemeAtom(byte[] data, int start, int length)
         {
             if (length < 32) return null;
 
@@ -2595,7 +2604,7 @@ namespace Nefdev.PptToPptx
             {
                 // PPT stores ANSI text using the system ANSI code page.
                 // On Windows this matches the current culture's ANSI code page (e.g., 936 on zh-CN).
-                int ansiCp = CultureInfo.CurrentCulture.TextInfo.ANSICodePage;
+                int ansiCp = _options?.PptAnsiCodePageOverride ?? CultureInfo.CurrentCulture.TextInfo.ANSICodePage;
                 var encoding = Encoding.GetEncoding(ansiCp);
                 return encoding.GetString(data, offset, byteCount).TrimEnd('\0');
             }
@@ -2628,7 +2637,7 @@ namespace Nefdev.PptToPptx
         
         #endregion
         
-        private VbaProject ReadVbaProject(OleCompoundFile oleFile)
+        private VbaProject? ReadVbaProject(OleCompoundFile oleFile)
         {
             var vbaStream = oleFile.GetStream("VBA Project");
             if (vbaStream != null)
