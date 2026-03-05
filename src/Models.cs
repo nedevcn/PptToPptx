@@ -103,6 +103,11 @@ namespace Nefdev.PptToPptx
         public bool HasBullet { get; set; }
         public char? BulletChar { get; set; }
         public string BulletFont { get; set; }
+        public short? LineSpacing { get; set; }
+        public short? SpaceBefore { get; set; }
+        public short? SpaceAfter { get; set; }
+        public short? LeftMargin { get; set; }
+        public short? Indent { get; set; }
         
         public TextParagraph()
         {

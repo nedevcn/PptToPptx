@@ -33,6 +33,7 @@ namespace Nefdev.PptToPptx
         private const string REL_THEME = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
         private const string REL_CHART = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
         private const string REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+        private const string REL_VBA_PROJECT = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
         
         public PptxWriter(string path)
         {
@@ -120,6 +121,10 @@ namespace Nefdev.PptToPptx
         
         private void WriteContentTypes(string baseDir, Presentation presentation)
         {
+            bool hasVba = presentation?.VbaProject?.ProjectData != null;
+            string extension = Path.GetExtension(_outputPath);
+            bool isMacroEnabledPackage = hasVba && string.Equals(extension, ".pptm", StringComparison.OrdinalIgnoreCase);
+
             var path = Path.Combine(baseDir, "[Content_Types].xml");
             using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
             
@@ -138,8 +143,11 @@ namespace Nefdev.PptToPptx
             DirectoryPropertyDefault(writer, "bmp", "image/bmp");
             DirectoryPropertyDefault(writer, "tiff", "image/tiff");
             
-            // Override — presentation
-            WriteOverride(writer, "/ppt/presentation.xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml");
+            // Override — presentation (macro-enabled 与普通包类型区分)
+            var presentationContentType = isMacroEnabledPackage
+                ? "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml"
+                : "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml";
+            WriteOverride(writer, "/ppt/presentation.xml", presentationContentType);
             
             // Override — slides (动态)
             for (int i = 0; i < presentation.Slides.Count; i++)
@@ -169,6 +177,12 @@ namespace Nefdev.PptToPptx
             for (int i = 0; i < chartCount; i++)
             {
                 WriteOverride(writer, $"/ppt/charts/chart{i + 1}.xml", "application/vnd.openxmlformats-officedocument.drawingml.chart+xml");
+            }
+
+            // VBA Project（仅在存在宏时写出）
+            if (hasVba)
+            {
+                WriteOverride(writer, "/ppt/vba/vbaProject.bin", "application/vnd.ms-office.vbaProject");
             }
             
             writer.WriteEndElement();
@@ -277,6 +291,8 @@ namespace Nefdev.PptToPptx
             var path = Path.Combine(baseDir, "ppt", "_rels", "presentation.xml.rels");
             using var writer = XmlWriter.Create(path, new XmlWriterSettings { Indent = true });
             
+            bool hasVba = presentation?.VbaProject?.ProjectData != null;
+            
             writer.WriteStartDocument(true);
             writer.WriteStartElement("Relationships", NS_RELS);
             
@@ -297,6 +313,13 @@ namespace Nefdev.PptToPptx
             // Theme: rId(N+masterCount+1)
             int themeRid = presentation.Slides.Count + masterCount + 1;
             WriteRelationship(writer, $"rId{themeRid}", REL_THEME, "theme/theme1.xml");
+
+            // VBA Project relationship（仅在存在宏时添加）
+            if (hasVba)
+            {
+                int vbaRid = themeRid + 1;
+                WriteRelationship(writer, $"rId{vbaRid}", REL_VBA_PROJECT, "vba/vbaProject.bin");
+            }
             
             writer.WriteEndElement();
             writer.WriteEndDocument();
@@ -998,7 +1021,58 @@ namespace Nefdev.PptToPptx
                     writer.WriteAttributeString("algn", "l");
                     break;
             }
-            writer.WriteEndElement();
+            // 大纲级别（如果有）
+            if (para.IndentLevel > 0)
+            {
+                writer.WriteAttributeString("lvl", Math.Max(0, para.IndentLevel - 1).ToString());
+            }
+
+            // 段前/段后间距、左缩进等（简单映射，单位直接沿用 PPT 的整数值）
+            if (para.LeftMargin.HasValue)
+            {
+                writer.WriteAttributeString("marL", para.LeftMargin.Value.ToString());
+            }
+            if (para.Indent.HasValue)
+            {
+                writer.WriteAttributeString("indent", para.Indent.Value.ToString());
+            }
+
+            // 行距、段前段后（使用 a:lnSpc / a:spcBef / a:spcAft 的简单形式）
+            if (para.LineSpacing.HasValue)
+            {
+                writer.WriteStartElement("a", "lnSpc", NS_A);
+                writer.WriteStartElement("a", "spcPts", NS_A);
+                writer.WriteAttributeString("val", Math.Max(0, para.LineSpacing.Value).ToString());
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+            }
+            if (para.SpaceBefore.HasValue)
+            {
+                writer.WriteStartElement("a", "spcBef", NS_A);
+                writer.WriteStartElement("a", "spcPts", NS_A);
+                writer.WriteAttributeString("val", Math.Max(0, para.SpaceBefore.Value).ToString());
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+            }
+            if (para.SpaceAfter.HasValue)
+            {
+                writer.WriteStartElement("a", "spcAft", NS_A);
+                writer.WriteStartElement("a", "spcPts", NS_A);
+                writer.WriteAttributeString("val", Math.Max(0, para.SpaceAfter.Value).ToString());
+                writer.WriteEndElement();
+                writer.WriteEndElement();
+            }
+
+            // 项目符号（仅支持最简单的字符项目符号）
+            if (para.HasBullet)
+            {
+                writer.WriteStartElement("a", "buChar", NS_A);
+                string bulletChar = para.BulletChar.HasValue ? para.BulletChar.Value.ToString() : "•";
+                writer.WriteAttributeString("char", bulletChar);
+                writer.WriteEndElement();
+            }
+
+            writer.WriteEndElement(); // pPr
             
             // 文本运行
             for (int i = 0; i < para.Runs.Count; i++)

@@ -1040,8 +1040,12 @@ namespace Nefdev.PptToPptx
             int textCharCount = textLength + 1; // +1 for the CR at the end in PPT text runs
 
             // === Phase 1: Parse paragraph-level runs ===
-            var paraStyles = new List<(int count, TextAlignment align)>();
+            var paraStyles = new List<(int count, TextAlignment align, ushort indentLevel, uint mask,
+                                       ushort bulletFlags, ushort? bulletChar, ushort? bulletFontRef,
+                                       short? lineSpacing, short? spaceBefore, short? spaceAfter,
+                                       short? leftMargin, short? indent)>();
             int paraTextConsumed = 0;
+            bool isFirstParaRun = true;
             while (pos < end && paraTextConsumed < textCharCount)
             {
                 if (pos + 4 > end) break;
@@ -1058,14 +1062,40 @@ namespace Nefdev.PptToPptx
                 pos += 4;
 
                 TextAlignment align = TextAlignment.Left;
+                ushort bulletFlags = 0;
+                ushort? bulletChar = null;
+                ushort? bulletFontRef = null;
+                short? lineSpacing = null;
+                short? spaceBefore = null;
+                short? spaceAfter = null;
+                short? leftMargin = null;
+                short? indent = null;
 
                 // Parse paragraph properties based on mask bits
                 if ((paraMask & 0x000F) != 0) // bulletFlags
+                {
+                    if (pos + 2 <= end)
+                    {
+                        bulletFlags = BitConverter.ToUInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x0080) != 0) // bulletChar
+                {
+                    if (pos + 2 <= end)
+                    {
+                        bulletChar = BitConverter.ToUInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x0010) != 0) // bulletFontRef
+                {
+                    if (pos + 2 <= end)
+                    {
+                        bulletFontRef = BitConverter.ToUInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x0040) != 0) // bulletSize
                     pos = Math.Min(pos + 2, end);
                 if ((paraMask & 0x0020) != 0) // bulletColor
@@ -1080,15 +1110,45 @@ namespace Nefdev.PptToPptx
                     pos = Math.Min(pos + 2, end);
                 }
                 if ((paraMask & 0x1000) != 0) // lineSpacing
+                {
+                    if (pos + 2 <= end)
+                    {
+                        lineSpacing = BitConverter.ToInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x2000) != 0) // spaceBefore
+                {
+                    if (pos + 2 <= end)
+                    {
+                        spaceBefore = BitConverter.ToInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x4000) != 0) // spaceAfter
+                {
+                    if (pos + 2 <= end)
+                    {
+                        spaceAfter = BitConverter.ToInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x8000) != 0) // leftMargin
+                {
+                    if (pos + 2 <= end)
+                    {
+                        leftMargin = BitConverter.ToInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x10000) != 0) // indent
+                {
+                    if (pos + 2 <= end)
+                    {
+                        indent = BitConverter.ToInt16(data, pos);
+                    }
                     pos = Math.Min(pos + 2, end);
+                }
                 if ((paraMask & 0x0100) != 0) // defaultTabSize
                     pos = Math.Min(pos + 2, end);
                 if ((paraMask & 0x0400) != 0) // wrapFlags
@@ -1096,8 +1156,36 @@ namespace Nefdev.PptToPptx
                 if ((paraMask & 0x200000) != 0) // fontAlign
                     pos = Math.Min(pos + 2, end);
                 // textDirection, reserved, etc. — skip any other known bits
+                paraStyles.Add((paraRunChars, align, paraIndentLevel, paraMask,
+                                bulletFlags, bulletChar, bulletFontRef,
+                                lineSpacing, spaceBefore, spaceAfter,
+                                leftMargin, indent));
 
-                paraStyles.Add((paraRunChars, align));
+                // 只把第一段样式映射到 Paragraph，对后续 runs 暂不细分
+                if (isFirstParaRun)
+                {
+                    isFirstParaRun = false;
+                    paragraph.IndentLevel = paraIndentLevel;
+                    // 简单判断是否有项目符号
+                    paragraph.HasBullet = bulletFlags != 0 || bulletChar.HasValue;
+                    if (bulletChar.HasValue)
+                    {
+                        paragraph.BulletChar = (char)bulletChar.Value;
+                    }
+                    if (bulletFontRef.HasValue)
+                    {
+                        int idx = bulletFontRef.Value;
+                        if (idx >= 0 && idx < _fontTable.Count)
+                        {
+                            paragraph.BulletFont = _fontTable[idx];
+                        }
+                    }
+                    paragraph.LineSpacing = lineSpacing;
+                    paragraph.SpaceBefore = spaceBefore;
+                    paragraph.SpaceAfter = spaceAfter;
+                    paragraph.LeftMargin = leftMargin;
+                    paragraph.Indent = indent;
+                }
             }
 
             // Apply first paragraph alignment
