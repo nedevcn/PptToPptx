@@ -840,6 +840,15 @@ namespace Nefdev.PptToPptx
             writer.WriteStartElement("a", "bodyPr", NS_A);
             writer.WriteAttributeString("wrap", "square");
             writer.WriteAttributeString("rtlCol", "0");
+            if (!string.IsNullOrEmpty(shape.VerticalAlignment))
+            {
+                // t, ctr, b
+                writer.WriteAttributeString("anchor", shape.VerticalAlignment);
+            }
+            if (shape.MarginLeft.HasValue) writer.WriteAttributeString("lIns", Math.Max(0, shape.MarginLeft.Value).ToString());
+            if (shape.MarginTop.HasValue) writer.WriteAttributeString("tIns", Math.Max(0, shape.MarginTop.Value).ToString());
+            if (shape.MarginRight.HasValue) writer.WriteAttributeString("rIns", Math.Max(0, shape.MarginRight.Value).ToString());
+            if (shape.MarginBottom.HasValue) writer.WriteAttributeString("bIns", Math.Max(0, shape.MarginBottom.Value).ToString());
             writer.WriteEndElement();
             
             writer.WriteStartElement("a", "lstStyle", NS_A);
@@ -1183,38 +1192,42 @@ namespace Nefdev.PptToPptx
                 writer.WriteAttributeString("lvl", Math.Max(0, para.IndentLevel - 1).ToString());
             }
 
-            // 段前/段后间距、左缩进等（简单映射，单位直接沿用 PPT 的整数值）
+            // PPT paragraph ruler values are in "master units" (1/576 inch). DrawingML uses EMU for marL/indent.
             if (para.LeftMargin.HasValue)
             {
-                writer.WriteAttributeString("marL", para.LeftMargin.Value.ToString());
+                writer.WriteAttributeString("marL", MasterUnitsToEmu(para.LeftMargin.Value).ToString());
             }
             if (para.Indent.HasValue)
             {
-                writer.WriteAttributeString("indent", para.Indent.Value.ToString());
+                writer.WriteAttributeString("indent", MasterUnitsToEmu(para.Indent.Value).ToString());
             }
 
-            // 行距、段前段后（使用 a:lnSpc / a:spcBef / a:spcAft 的简单形式）
-            if (para.LineSpacing.HasValue)
+            // Line spacing / paragraph spacing
+            // DrawingML spcPts uses 1/100 point. PPT stores these in master units as well (1/576 inch).
+            if (para.LineSpacing.HasValue && para.LineSpacing.Value >= 0)
             {
+                int pts100 = MasterUnitsToPoints100(para.LineSpacing.Value);
                 writer.WriteStartElement("a", "lnSpc", NS_A);
                 writer.WriteStartElement("a", "spcPts", NS_A);
-                writer.WriteAttributeString("val", Math.Max(0, para.LineSpacing.Value).ToString());
+                writer.WriteAttributeString("val", pts100.ToString());
                 writer.WriteEndElement();
                 writer.WriteEndElement();
             }
-            if (para.SpaceBefore.HasValue)
+            if (para.SpaceBefore.HasValue && para.SpaceBefore.Value >= 0)
             {
+                int pts100 = MasterUnitsToPoints100(para.SpaceBefore.Value);
                 writer.WriteStartElement("a", "spcBef", NS_A);
                 writer.WriteStartElement("a", "spcPts", NS_A);
-                writer.WriteAttributeString("val", Math.Max(0, para.SpaceBefore.Value).ToString());
+                writer.WriteAttributeString("val", pts100.ToString());
                 writer.WriteEndElement();
                 writer.WriteEndElement();
             }
-            if (para.SpaceAfter.HasValue)
+            if (para.SpaceAfter.HasValue && para.SpaceAfter.Value >= 0)
             {
+                int pts100 = MasterUnitsToPoints100(para.SpaceAfter.Value);
                 writer.WriteStartElement("a", "spcAft", NS_A);
                 writer.WriteStartElement("a", "spcPts", NS_A);
-                writer.WriteAttributeString("val", Math.Max(0, para.SpaceAfter.Value).ToString());
+                writer.WriteAttributeString("val", pts100.ToString());
                 writer.WriteEndElement();
                 writer.WriteEndElement();
             }
@@ -1296,6 +1309,27 @@ namespace Nefdev.PptToPptx
             }
             
             writer.WriteEndElement(); // p
+        }
+
+        private static long MasterUnitsToEmu(long masterUnits)
+        {
+            // 1 inch = 914400 EMU, 1 master unit = 1/576 inch
+            // => EMU = masterUnits * 914400 / 576  (rounded)
+            long n = masterUnits * 914400L;
+            long d = 576L;
+            if (n >= 0) return (n + (d / 2)) / d;
+            return (n - (d / 2)) / d;
+        }
+
+        private static int MasterUnitsToPoints100(int masterUnits)
+        {
+            // 1 master unit = 1/576 inch; 1 inch = 72pt
+            // => points = masterUnits * 72 / 576 = masterUnits / 8
+            // => points*100 = masterUnits * 900 / 72? Actually (masterUnits/8)*100 = masterUnits*12.5
+            // Use integer math with rounding: (masterUnits * 25) / 2
+            int n = masterUnits * 25;
+            if (n >= 0) return (n + 1) / 2;
+            return (n - 1) / 2;
         }
         
         #endregion
