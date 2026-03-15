@@ -5,9 +5,13 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nedev.FileConverters.PptToPptx", "src\Nedev.FileConverters.PptToPptx.csproj", "{5AFC3B0A-1C5D-0607-DC8D-8DD0E818866B}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B4E4D5E6-F7G8-H9I0-J1K2-L3M4N5O6P7Q8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nedev.FileConverters.PptToPptx", "src\Nedev.FileConverters.PptToPptx\Nedev.FileConverters.PptToPptx.csproj", "{5AFC3B0A-1C5D-0607-DC8D-8DD0E818866B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nedev.FileConverters.PptToPptx.Cli", "src\Nedev.FileConverters.PptToPptx.Cli\Nedev.FileConverters.PptToPptx.Cli.csproj", "{BE0696BF-7F5B-41CF-A9F4-DEE28AFA3443}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nedev.FileConverters.PptToPptx.Tests", "tests\Nedev.FileConverters.PptToPptx.Tests\Nedev.FileConverters.PptToPptx.Tests.csproj", "{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -43,6 +47,18 @@ Global
 		{BE0696BF-7F5B-41CF-A9F4-DEE28AFA3443}.Release|x64.Build.0 = Release|Any CPU
 		{BE0696BF-7F5B-41CF-A9F4-DEE28AFA3443}.Release|x86.ActiveCfg = Release|Any CPU
 		{BE0696BF-7F5B-41CF-A9F4-DEE28AFA3443}.Release|x86.Build.0 = Release|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Debug|x64.Build.0 = Debug|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Debug|x86.Build.0 = Debug|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Release|x64.ActiveCfg = Release|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Release|x64.Build.0 = Release|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Release|x86.ActiveCfg = Release|Any CPU
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -50,6 +66,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{5AFC3B0A-1C5D-0607-DC8D-8DD0E818866B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{BE0696BF-7F5B-41CF-A9F4-DEE28AFA3443} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C3D4E5F6-G7H8-I9J0-K1L2-M3N4O5P6Q7R8} = {B4E4D5E6-F7G8-H9I0-J1K2-L3M4N5O6P7Q8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {74095023-D60F-4114-A2C3-F53B1973BCDC}

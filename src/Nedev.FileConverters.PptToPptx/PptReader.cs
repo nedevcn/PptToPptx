@@ -7,93 +7,32 @@ using System.Globalization;
 
 namespace Nedev.FileConverters.PptToPptx
 {
-    public class PptReader : IDisposable
+    /// <summary>
+    /// Reads and parses legacy PowerPoint (.ppt) binary files.
+    /// </summary>
+    public partial class PptReader : IDisposable
     {
         private readonly Stream _stream;
         private readonly ConversionOptions? _options;
         private readonly Action<string>? _log;
         private byte[]? _picturesData;
         private OleCompoundFile? _oleFile;
-        
-        private struct OleObjectInfo
-        {
-            public string StorageName;
-            public string ProgId;
-        }
 
         // exObjId → OLE storage name / progId (e.g., "_1326458456")
         private Dictionary<int, OleObjectInfo> _exOleObjMap = new Dictionary<int, OleObjectInfo>();
-        
-        // PPT Record type constants
-        private const ushort RT_Document = 1000;
-        private const ushort RT_Slide = 1006;
-        private const ushort RT_SlideListWithText = 1008;
-        private const ushort RT_MainMaster = 1016;
-        private const ushort RT_SlideMasterAtom = 1017;
-        private const ushort RT_SlidePersistAtom = 1011;
-        private const ushort RT_TextCharsAtom = 4000;  // 0x0FA0 — Unicode text
-        private const ushort RT_TextBytesAtom = 4008;  // 0x0FA8 — ANSI text
-        private const ushort RT_StyleTextPropAtom = 4001;
-        private const ushort RT_TextHeaderAtom = 3999;  // 0x0F9F
-        private const ushort RT_UserEditAtom = 4085;  // 0x0FF5
-        private const ushort RT_PersistDirectoryAtom = 6002;  // 0x1772
-        private const ushort RT_CurrentUserAtom = 4086;
-        private const ushort RT_SlideAtom = 1007;
-        private const ushort RT_Notes = 1008;
-        private const ushort RT_NotesAtom = 1009;
-        private const ushort RT_Environment = 1010;
-        private const ushort RT_SlideShowSlideInfoAtom = 1012;
-        private const ushort RT_DocumentAtom = 1001;
-        private const ushort RT_ColorSchemeAtom = 2032;
-        private const ushort RT_FontCollection = 2005;
-        private const ushort RT_FontEntityAtom = 4023;
-        
-        // Hyperlink records
-        private const ushort RT_ExObjList = 1033;
-        private const ushort RT_ExHyperlink = 4055;
-        private const ushort RT_ExHyperlinkAtom = 4051;
-        private const ushort RT_InteractiveInfo = 4082;
-        private const ushort RT_InteractiveInfoAtom = 4083;
-        private const ushort RT_TextInteractiveInfoAtom = 4084;
-        private const ushort RT_CString = 4056;
-        private const ushort RT_AnimationInfoContainer = 4072;
-        private const ushort RT_AnimationInfoAtom = 4073;
-        
-        // OLE / ExObj records
-        private const ushort RT_ExObjRefAtom = 3009;   // Links shape to exObjId
-        private const ushort RT_ExOleObjStg = 4113;    // OLE Object storage reference
-        private const ushort RT_ExOleObjAtom = 4035;   // OLE Object atom with exObjId and storage name
-        private const ushort RT_ExEmbed = 4044;        // ExEmbed container
-        private const ushort RT_ExOleEmbed = 4034;     // ExOleEmbed container
-        private const ushort RT_ExOleLink = 4036;      // ExOleLink container
-        private const ushort RT_ExObjListAtom = 1034;  // ExObjList atom
-        
-        // Programmable Tags
-        private const ushort RT_ProgTags = 5000;
-        private const ushort RT_ProgStringTag = 5001;
-        private const ushort RT_ProgBinaryTag = 5002;
-        private const ushort RT_BinaryTagData = 5003;
-        
-        // Escher record types
-        private const ushort ESCHER_DggContainer = 0xF000;
-        private const ushort ESCHER_BStoreContainer = 0xF001;
-        private const ushort ESCHER_DgContainer = 0xF002;
-        private const ushort ESCHER_SpgrContainer = 0xF003;
-        private const ushort ESCHER_SpContainer = 0xF004;
-        private const ushort ESCHER_Sp = 0xF00A;
-        private const ushort ESCHER_ClientTextbox = 0xF00D;
-        private const ushort ESCHER_ClientData = 0xF011;
-        private const ushort ESCHER_ClientAnchor = 0xF010;
-        private const ushort ESCHER_ChildAnchor = 0xF00F;
-        private const ushort ESCHER_Opt = 0xF00B;
-        private const ushort ESCHER_BlipFirst = 0xF018;
-        private const ushort ESCHER_BlipLast = 0xF117;
-        
+
         private Dictionary<int, ImageResource> _blipMap = new Dictionary<int, ImageResource>();
         private List<string> _fontTable = new List<string>();
         private Dictionary<int, string> _hyperlinkMap = new Dictionary<int, string>();
         private Dictionary<int, string> _notesIdMap = new Dictionary<int, string>(); // slideIdRef -> notes text
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PptReader"/> class.
+        /// </summary>
+        /// <param name="path">The path to the .ppt file to read.</param>
+        /// <param name="options">Optional conversion options.</param>
+        /// <exception cref="ArgumentException">Thrown when path is null or empty.</exception>
+        /// <exception cref="FileNotFoundException">Thrown when the file does not exist.</exception>
         public PptReader(string path, ConversionOptions? options = null)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -120,6 +59,7 @@ namespace Nedev.FileConverters.PptToPptx
             var presentation = new Presentation();
             
             // 使用 OLE Compound File 解析器
+            _options?.ReportProgress(ConversionPhase.Reading, 10, "Parsing OLE container...");
             var oleFile = new OleCompoundFile(_stream);
             _oleFile = oleFile;
             oleFile.Parse();
@@ -145,9 +85,11 @@ namespace Nedev.FileConverters.PptToPptx
                     }
                     
                     // 读取 Persist 映射表
+                    _options?.ReportProgress(ConversionPhase.Reading, 15, "Building persist directory...");
                     var persistDirectory = BuildPersistDirectory(pptData, userEditOffset);
                     
                     // 读取 Pictures 流
+                    _options?.ReportProgress(ConversionPhase.ExtractingMedia, 20, "Extracting media...");
                     var picturesStream = oleFile.GetStream("Pictures");
                     if (picturesStream != null)
                     {
@@ -162,6 +104,7 @@ namespace Nedev.FileConverters.PptToPptx
                     GlobalScanForHyperlinks(pptData);
 
                     // 解析 Document 和 Slides
+                    _options?.ReportProgress(ConversionPhase.ProcessingStructure, 25, "Parsing document structure...");
                     ParsePptData(pptData, presentation, persistDirectory);
                     
                     // 关联 Notes 到 Slide
@@ -1218,6 +1161,13 @@ namespace Nedev.FileConverters.PptToPptx
                                 currentSlide.Index = presentation.Slides.Count + 1;
                                 presentation.Slides.Add(currentSlide);
                                 _log?.Invoke($"Adding Regular Slide Index={currentSlide.Index}, persistRef={persistRef}");
+                                
+                                // 报告进度 - 每10个幻灯片报告一次
+                                if (currentSlide.Index % 10 == 0)
+                                {
+                                    int percent = 30 + Math.Min(currentSlide.Index, 20); // 30-50% 范围
+                                    _options?.ReportProgress(ConversionPhase.ProcessingSlides, percent, $"Parsed {currentSlide.Index} slides...", currentSlide.Index, currentSlide.Index + 10);
+                                }
                             }
                             
                             if (persistMap.TryGetValue(persistRef, out int slideOffset))
@@ -2523,16 +2473,7 @@ namespace Nedev.FileConverters.PptToPptx
         }
         
         #region PPT Record Header
-        
-        private struct RecordHeader
-        {
-            public int RecVer;
-            public int RecInstance;
-            public ushort RecType;
-            public uint RecLen;
-            
-            public bool IsContainer => RecVer == 0x0F;
-        }
+        // RecordHeader struct is defined in PptReader.Models.cs
         
         private RecordHeader ReadRecordHeader(byte[] data, int offset)
         {

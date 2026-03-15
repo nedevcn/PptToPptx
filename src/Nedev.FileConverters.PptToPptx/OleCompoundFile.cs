@@ -30,7 +30,7 @@ namespace Nedev.FileConverters.PptToPptx
         
         public OleCompoundFile(Stream stream)
         {
-            _stream = stream;
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
             ReadHeader();
         }
         

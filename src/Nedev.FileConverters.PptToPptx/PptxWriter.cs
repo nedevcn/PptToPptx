@@ -6,38 +6,22 @@ using System.Collections.Generic;
 
 namespace Nedev.FileConverters.PptToPptx
 {
-    public class PptxWriter : IDisposable
+    /// <summary>
+    /// Writes presentation data to a PPTX (OpenXML) format file.
+    /// </summary>
+    public partial class PptxWriter : IDisposable
     {
         private readonly string _outputPath;
         private readonly ConversionOptions? _options;
         private readonly Action<string>? _log;
         private readonly Dictionary<Shape, int> _chartPartIdMap = new Dictionary<Shape, int>();
-        
-        // 命名空间常量
-        private const string NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main";
-        private const string NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
-        private const string NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-        private const string NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types";
-        private const string NS_RELS = "http://schemas.openxmlformats.org/package/2006/relationships";
-        private const string NS_DC = "http://purl.org/dc/elements/1.1/";
-        private const string NS_DCTERMS = "http://purl.org/dc/terms/";
-        private const string NS_DCMITYPE = "http://purl.org/dc/dcmitype/";
-        private const string NS_XSI = "http://www.w3.org/2001/XMLSchema-instance";
-        private const string NS_CP = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties";
-        private const string NS_EP = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties";
-        private const string NS_C = "http://schemas.openxmlformats.org/drawingml/2006/chart";
-        
-        private const string REL_OFFICE_DOC = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
-        private const string REL_CORE_PROPS = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
-        private const string REL_EXT_PROPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties";
-        private const string REL_SLIDE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";
-        private const string REL_SLIDE_MASTER = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster";
-        private const string REL_SLIDE_LAYOUT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout";
-        private const string REL_THEME = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
-        private const string REL_CHART = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
-        private const string REL_HYPERLINK = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
-        private const string REL_VBA_PROJECT = "http://schemas.microsoft.com/office/2006/relationships/vbaProject";
-        
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PptxWriter"/> class.
+        /// </summary>
+        /// <param name="path">The output file path for the .pptx file.</param>
+        /// <param name="options">Optional conversion options.</param>
+        /// <exception cref="ArgumentException">Thrown when path is null or empty.</exception>
         public PptxWriter(string path, ConversionOptions? options = null)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -66,18 +50,28 @@ namespace Nedev.FileConverters.PptToPptx
                 }
 
                 BuildChartPartMap(presentation);
+                _options?.ReportProgress(ConversionPhase.Writing, 50, "Creating directory structure...");
                 
                 CreateDirectoryStructure(tempDir, presentation);
                 WriteContentTypes(tempDir, presentation);
                 WritePackageRelationships(tempDir);
                 
                 // 写入图片资源
+                _options?.ReportProgress(ConversionPhase.Writing, 55, $"Writing {presentation.Images.Count} images...");
                 WriteMediaFiles(tempDir, presentation);
                 WriteEmbeddingFiles(tempDir, presentation);
                 
                 WritePresentationXml(tempDir, presentation);
                 WritePresentationRelationships(tempDir, presentation);
-                WriteSlidesXml(tempDir, presentation);
+                
+                // 写入幻灯片并报告进度
+                _options?.ReportProgress(ConversionPhase.ProcessingSlides, 60, $"Writing {presentation.Slides.Count} slides...", 0, presentation.Slides.Count);
+                WriteSlidesXml(tempDir, presentation, (processed, total) =>
+                {
+                    int percent = 60 + (processed * 25 / total);
+                    _options?.ReportProgress(ConversionPhase.ProcessingSlides, percent, $"Writing slide {processed} of {total}...", processed, total);
+                });
+                
                 WriteSlideLayouts(tempDir, presentation);
                 WriteSlideLayoutRelationships(tempDir, presentation);
                 WriteSlideMasters(tempDir, presentation);
@@ -88,9 +82,11 @@ namespace Nedev.FileConverters.PptToPptx
                 
                 if (presentation.VbaProject?.ProjectData != null && presentation.VbaProject.ProjectData.Length > 0)
                 {
+                    _options?.ReportProgress(ConversionPhase.Writing, 88, "Writing VBA project...");
                     WriteVbaProject(tempDir, presentation.VbaProject);
                 }
                 
+                _options?.ReportProgress(ConversionPhase.Writing, 90, "Packaging PPTX file...");
                 PackageAsPptx(tempDir, _outputPath);
                 
                 _log?.Invoke($"PPTX file written to: {_outputPath}");
@@ -416,7 +412,7 @@ namespace Nedev.FileConverters.PptToPptx
         
         #region Slides
         
-        private void WriteSlidesXml(string baseDir, Presentation presentation)
+        private void WriteSlidesXml(string baseDir, Presentation presentation, Action<int, int>? progressCallback = null)
         {
             var slides = presentation.Slides;
             for (int i = 0; i < slides.Count; i++)
@@ -430,6 +426,8 @@ namespace Nedev.FileConverters.PptToPptx
                     WriteNotesSlideXml(baseDir, slides[i], slideNum);
                     WriteNotesSlideRelationships(baseDir, slideNum);
                 }
+                
+                progressCallback?.Invoke(slideNum, slides.Count);
             }
         }
         
@@ -1331,26 +1329,7 @@ namespace Nedev.FileConverters.PptToPptx
             writer.WriteEndElement(); // p
         }
 
-        private static long MasterUnitsToEmu(long masterUnits)
-        {
-            // 1 inch = 914400 EMU, 1 master unit = 1/576 inch
-            // => EMU = masterUnits * 914400 / 576  (rounded)
-            long n = masterUnits * 914400L;
-            long d = 576L;
-            if (n >= 0) return (n + (d / 2)) / d;
-            return (n - (d / 2)) / d;
-        }
-
-        private static int MasterUnitsToPoints100(int masterUnits)
-        {
-            // 1 master unit = 1/576 inch; 1 inch = 72pt
-            // => points = masterUnits * 72 / 576 = masterUnits / 8
-            // => points*100 = masterUnits * 900 / 72? Actually (masterUnits/8)*100 = masterUnits*12.5
-            // Use integer math with rounding: (masterUnits * 25) / 2
-            int n = masterUnits * 25;
-            if (n >= 0) return (n + 1) / 2;
-            return (n - 1) / 2;
-        }
+        // MasterUnitsToEmu and MasterUnitsToPoints100 are defined in PptxWriter.Utilities.cs
         
         #endregion
         
